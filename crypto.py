@@ -3,9 +3,11 @@ import json
 
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
+from constant import DEFAULT_ENCODING
+
 
 def base64_encode(s: str):
-    return base64.b64encode(s.encode('utf-8')).decode('utf-8')
+    return base64.b64encode(s.encode(DEFAULT_ENCODING)).decode(DEFAULT_ENCODING)
 
 def get_encrypt_by_str(text: str, timestamp: int) -> str:
     """
@@ -17,7 +19,7 @@ def get_encrypt_by_str(text: str, timestamp: int) -> str:
         Base64 编码的加密结果
     """
     # 密钥 - 注意：JavaScript 中的密钥是 Base64 编码的 'dianxiaomi202412'
-    key = 'ZGlhbnhpYW9taTIwMjQxMg=='.encode('utf-8')
+    key = 'ZGlhbnhpYW9taTIwMjQxMg=='.encode(DEFAULT_ENCODING)
 
     
     # 构造待加密数据，用 '±DXM±' 连接两个参数
@@ -27,11 +29,11 @@ def get_encrypt_by_str(text: str, timestamp: int) -> str:
     cipher = AES.new(key, AES.MODE_ECB)
     
     # 对数据进行 PKCS7 填充并加密
-    padded = pad(plaintext.encode('utf-8'), AES.block_size, style='pkcs7')
+    padded = pad(plaintext.encode(DEFAULT_ENCODING), AES.block_size, style='pkcs7')
     encrypted_data = cipher.encrypt(padded)
     
     # 返回 Base64 编码的加密结果
-    return base64.b64encode(encrypted_data).decode('utf-8')
+    return base64.b64encode(encrypted_data).decode(DEFAULT_ENCODING)
 
 # 测试函数
 if __name__ == "__main__":

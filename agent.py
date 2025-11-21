@@ -2,14 +2,18 @@ import json
 import time
 import requests
 
-from urls import *
+from constant import *
 from bs4 import BeautifulSoup
-from util import curr_milliseconds
+from cookies import CookieManager
+from util import curr_milliseconds, ensure_dir_exists
 from urllib.parse import quote
 from crypto import get_encrypt_by_str, base64_encode
+from pathlib import Path
 
 class Agent():
-    def __init__(self):
+    def __init__(self, cache_dir: str = CACHE_DIR):
+        self.cache_dir = Path(cache_dir)
+        ensure_dir_exists(self.cache_dir)
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
             'Origin': 'https://www.dianxiaomi.com',
@@ -29,6 +33,18 @@ class Agent():
         }
         self.session = requests.Session()
 
+    def load_cookies(self, account: str):
+        if account is None:
+            return None
+        cookie_file = self.cache_dir / f'{account}.json'
+        try:
+            with cookie_file.open('r', encoding=DEFAULT_ENCODING) as f:
+                cookies = json.load(f)
+            return cookies
+        except Exception as e:
+            print(f'读取cookie错误[account={account}]: {e}')
+            return {}
+
     def get_captcha(self):
         ts = curr_milliseconds()
         verify_code_url = f'{ROOT}/{VERIFY_PAGE}?t={ts}'
@@ -36,10 +52,10 @@ class Agent():
         image = response.content
         return image
 
-    def login(self, account: str, password: str, captcha: str):
+    def login(self, username: str, password: str, captcha: str):
         ts = curr_milliseconds()
         payload = {
-            'account': get_encrypt_by_str(account, ts),
+            'account': get_encrypt_by_str(username, ts),
             'password': get_encrypt_by_str(password, ts),
             'dxmVerify': captcha,
             'loginVerifyCode': None,
@@ -66,4 +82,18 @@ class Agent():
         login_url = f'{ROOT}/{LOGIN_PAGE}'
         resp = self.session.post(login_url, data=payload, headers=self.headers)
         data = json.loads(resp.text)
+
+        account_save_dir = self.cache_dir / 'accounts'
+        ensure_dir_exists(account_save_dir)
+        cookie_file = account_save_dir / f'{username}.json'
+        account = {
+            'username': username,
+            'password': password,
+            'cookies': self.session.cookies.get_dict()
+        }
+        try:
+            with cookie_file.open('w', encoding=DEFAULT_ENCODING) as f:
+                json.dump(account, fp=f)
+        except Exception as e:
+            print(f'保存cookie失败[account={username}]:{e}')
         return 'error' not in data

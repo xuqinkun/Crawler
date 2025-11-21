@@ -1,3 +1,4 @@
+import json
 import sys
 import sys
 
@@ -8,8 +9,9 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit, QToolTip,
                              QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox)
 
 from agent import Agent
-from urls import *
-from util import curr_milliseconds
+from constant import *
+from util import curr_milliseconds,ensure_dir_exists
+from pathlib import Path
 
 
 class ClickableLabel(QLabel):
@@ -49,6 +51,9 @@ class LoginWindow(QWidget):
         super().__init__()
         self.agent = Agent()
         self.captcha_url = f"{ROOT}/{VERIFY_PAGE}?t={curr_milliseconds()}"
+        self.accounts = {}
+        self.cache_dir = Path('.cache')
+        ensure_dir_exists(self.cache_dir)
         self.init_ui()
         self.refresh_captcha()
 
@@ -115,11 +120,21 @@ class LoginWindow(QWidget):
             margin-bottom: 0px;
         """)
 
+        account = self.load_current_account()
+        username = None
+        password = None
+        if account and 'username' in account:
+            username = account['username']
+        if password and 'password' in account:
+            password = account['password']
         # 用户名输入
-        username_layout = QVBoxLayout()
+        username_layout = QVBoxLayout()                
 
         self.username_input = QLineEdit()
-        self.username_input.setPlaceholderText('请输入用户名')
+        if username:
+            self.username_input.setText(username)
+        else:
+            self.username_input.setPlaceholderText(username)
         self.username_input.setMinimumHeight(40)
         username_layout.addWidget(self.username_input)
 
@@ -127,7 +142,10 @@ class LoginWindow(QWidget):
         password_layout = QVBoxLayout()
 
         self.password_input = QLineEdit()
-        self.password_input.setPlaceholderText('请输入密码')
+        if password:
+            self.password_input.setText(password)
+        else:
+            self.password_input.setPlaceholderText('请输入密码')
         self.password_input.setEchoMode(QLineEdit.Password)
         self.password_input.setMinimumHeight(40)
         password_layout.setContentsMargins(0,5,0,5)
@@ -171,6 +189,23 @@ class LoginWindow(QWidget):
         main_layout.addWidget(self.login_btn)
 
         self.setLayout(main_layout)
+        
+    def load_current_account(self):
+        accounts_dir = self.cache_dir / 'accounts'
+        if not accounts_dir.exists():
+            return None
+        for f in accounts_dir.glob("*.json"):
+            with f.open('r', encoding=DEFAULT_ENCODING) as fp:
+                account = json.load(fp)
+            if 'username' not in account:
+                continue
+            self.accounts[account['username']] = account
+        current_account_file = self.cache_dir / 'current_account.txt'
+        with current_account_file.open('r', encoding=DEFAULT_ENCODING) as f:
+            username = f.read()
+        if username not in self.accounts:
+            return None
+        return self.accounts[username]
 
     def refresh_captcha(self):
         """从指定URL获取验证码图片"""
@@ -211,6 +246,9 @@ class LoginWindow(QWidget):
         if self.validate_login(username, password, captcha):
             QMessageBox.information(self, '成功', '登录成功！')
             # 登录成功后的操作，比如打开主窗口
+            current_account_file =  self.cache_dir / f'current_account.txt'
+            with current_account_file.open('w', encoding=DEFAULT_ENCODING) as f:
+                f.write(username)
         else:
             QMessageBox.warning(self, '失败', '登录失败，请检查用户名、密码和验证码')
             # 登录失败后刷新验证码
