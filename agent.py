@@ -29,25 +29,19 @@ class Agent():
         }
         self.session = requests.Session()
 
-    def get_verify_code(self):
+    def get_captcha(self):
         ts = curr_milliseconds()
         verify_code_url = f'{ROOT}/{VERIFY_PAGE}?t={ts}'
         response = self.session.get(verify_code_url)
         image = response.content
-        with open('code.png', 'wb') as f:
-            f.write(image)
         return image
 
-    def login(self):
-        verify_code = input('请输入验证码: ')
-        account = '2b13257592627'
-        password = 'Aa123456'
-        time.sleep(2)
+    def login(self, account: str, password: str, captcha: str):
         ts = curr_milliseconds()
         payload = {
             'account': get_encrypt_by_str(account, ts),
             'password': get_encrypt_by_str(password, ts),
-            'dxmVerify': verify_code,
+            'dxmVerify': captcha,
             'loginVerifyCode': None,
             "loginRedUrl": "",
             "remeber": "remeber",
@@ -68,19 +62,8 @@ class Agent():
                "optOut": False,
                "lastEventId": 0}
         myj_text = json.dumps(myj)
-
         self.session.cookies.set('MYJ_fapsc5t4tc', base64_encode(quote(myj_text)))
-
         login_url = f'{ROOT}/{LOGIN_PAGE}'
         resp = self.session.post(login_url, data=payload, headers=self.headers)
-        return resp
-
-if __name__ == '__main__':
-    agent = Agent()
-    agent.get_verify_code()
-    response = agent.login()
-    data = json.loads(response.text)
-    if 'error' in data:
-        print(data['error'])
-    else:
-        print('登录成功')
+        data = json.loads(resp.text)
+        return 'error' not in data
