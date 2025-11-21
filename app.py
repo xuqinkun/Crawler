@@ -2,15 +2,47 @@ import sys
 import sys
 
 import requests
-from PyQt5.QtCore import Qt, QByteArray
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit,
+from PyQt5.QtCore import Qt, QByteArray, QTimer
+from PyQt5.QtGui import QPixmap, QCursor
+from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit, QToolTip,
                              QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox)
 
 from agent import Agent
 from urls import *
 from util import curr_milliseconds
 
+
+class ClickableLabel(QLabel):
+    """可点击的QLabel，用于验证码图片"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCursor(QCursor(Qt.PointingHandCursor))
+        self.tooltip_timer = QTimer()
+        self.tooltip_timer.setSingleShot(True)
+        self.tooltip_timer.timeout.connect(self.show_tooltip_immediately)
+
+    def mousePressEvent(self, event):
+        """鼠标点击事件"""
+        if event.button() == Qt.LeftButton:
+            self.parent().refresh_captcha()
+        super().mousePressEvent(event)
+
+    def enterEvent(self, event):
+        """鼠标进入事件"""
+        self.tooltip_timer.start(50)  # 50毫秒后显示提示，几乎无延迟
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        """鼠标离开事件"""
+        self.tooltip_timer.stop()
+        QToolTip.hideText()
+        super().leaveEvent(event)
+
+    def show_tooltip_immediately(self):
+        """立即显示工具提示"""
+        pos = self.mapToGlobal(self.rect().topRight())
+        QToolTip.showText(pos, "点击刷新验证码", self)
 
 class LoginWindow(QWidget):
     def __init__(self):
@@ -112,7 +144,7 @@ class LoginWindow(QWidget):
         self.captcha_input.setMinimumHeight(40)
 
         # 验证码图片显示
-        self.captcha_label = QLabel()
+        self.captcha_label = ClickableLabel(self)
         self.captcha_label.setFixedSize(120, 40)
         self.captcha_label.setStyleSheet("""
             border: 1px solid #ddd;
@@ -121,15 +153,11 @@ class LoginWindow(QWidget):
         self.captcha_label.setAlignment(Qt.AlignCenter)
 
         captcha_input_layout.addWidget(self.captcha_input)
+        captcha_input_layout.addSpacing(10)
         captcha_input_layout.addWidget(self.captcha_label)
         captcha_input_layout.addStretch()
 
         captcha_layout.addLayout(captcha_input_layout)
-
-        # 刷新验证码按钮
-        self.refresh_btn = QPushButton('刷新验证码')
-        self.refresh_btn.setObjectName('refresh')
-        self.refresh_btn.clicked.connect(self.refresh_captcha)
 
         # 登录按钮
         self.login_btn = QPushButton('登录')
@@ -140,7 +168,6 @@ class LoginWindow(QWidget):
         main_layout.addLayout(username_layout)
         main_layout.addLayout(password_layout)
         main_layout.addLayout(captcha_layout)
-        main_layout.addWidget(self.refresh_btn)
         main_layout.addWidget(self.login_btn)
 
         self.setLayout(main_layout)
