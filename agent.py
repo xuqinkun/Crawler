@@ -13,6 +13,7 @@ from pathlib import Path
 class Agent():
     def __init__(self, cache_dir: str = CACHE_DIR):
         self.cache_dir = Path(cache_dir)
+        self.cookie_manager = CookieManager()
         ensure_dir_exists(self.cache_dir)
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
@@ -53,6 +54,7 @@ class Agent():
         return image
 
     def login(self, username: str, password: str, captcha: str):
+        self.cookie_manager.load_cookies_json(self.session, username)
         ts = curr_milliseconds()
         payload = {
             'account': get_encrypt_by_str(username, ts),
@@ -82,18 +84,5 @@ class Agent():
         login_url = f'{ROOT}/{LOGIN_PAGE}'
         resp = self.session.post(login_url, data=payload, headers=self.headers)
         data = json.loads(resp.text)
-
-        account_save_dir = self.cache_dir / 'accounts'
-        ensure_dir_exists(account_save_dir)
-        cookie_file = account_save_dir / f'{username}.json'
-        account = {
-            'username': username,
-            'password': password,
-            'cookies': self.session.cookies.get_dict()
-        }
-        try:
-            with cookie_file.open('w', encoding=DEFAULT_ENCODING) as f:
-                json.dump(account, fp=f)
-        except Exception as e:
-            print(f'保存cookie失败[account={username}]:{e}')
+        self.cookie_manager.save_cookies_json(self.session, account=username)
         return 'error' not in data

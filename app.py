@@ -132,7 +132,7 @@ class LoginWindow(QWidget):
         if username:
             self.username_input.setText(username)
         else:
-            self.username_input.setPlaceholderText(username)
+            self.username_input.setPlaceholderText('请输入账号')
         self.username_input.setMinimumHeight(40)
         username_layout.addWidget(self.username_input)
 
@@ -259,10 +259,26 @@ class LoginWindow(QWidget):
         这里需要根据实际情况实现具体的验证逻辑
         """
         try:
-            return self.agent.login(username, password, captcha)
+            if self.agent.login(username, password, captcha):
+               self.save_account(username, password)
+               return True
         except Exception as e:
             print(f"登录验证错误: {e}")
             return False
+
+    def save_account(self, username: str, password: str):
+        account_save_dir = self.cache_dir / 'accounts'
+        ensure_dir_exists(account_save_dir)
+        account_save_file = account_save_dir / f'{username}.json'
+        account = {
+            'username': username,
+            'password': password,
+        }
+        try:
+            with account_save_file.open('w', encoding=DEFAULT_ENCODING) as f:
+                json.dump(account, fp=f)
+        except Exception as e:
+            print(f'保存cookie失败[account={username}]:{e}')
 
 
 class MainWindow(QWidget):

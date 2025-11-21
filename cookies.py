@@ -4,10 +4,13 @@ import os
 import pickle
 import requests
 
+from constant import *
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 from util import ensure_dir_exists
+
+COOKIE_SAVE_DIR = 'cookies'
 
 
 class CookieManager:
@@ -15,9 +18,11 @@ class CookieManager:
     Cookie管理器 - 支持多个账号的Cookie保存和恢复
     """
 
-    def __init__(self, cache_dir: str = ".cache"):
+    def __init__(self, cache_dir: str = CACHE_DIR):
         self.cache_dir = Path(cache_dir)
+        self.cookie_dir = Path(cache_dir) / COOKIE_SAVE_DIR
         ensure_dir_exists(self.cache_dir)
+        ensure_dir_exists(self.cookie_dir)
         self.logger = self._setup_logger()
 
     def _setup_logger(self):
@@ -50,7 +55,7 @@ class CookieManager:
         if filename is None:
             filename = f"{account}.json"
 
-        filepath = os.path.join(self.cache_dir, filename)
+        filepath = self.cookie_dir / filename
 
         try:
             cookies_list = []
@@ -66,7 +71,7 @@ class CookieManager:
                 }
                 cookies_list.append(cookie_dict)
 
-            with open(filepath, 'w', encoding='utf-8') as f:
+            with filepath.open('w', encoding='utf-8') as f:
                 json.dump({
                     'account_id': account,
                     'saved_at': datetime.now().isoformat(),
@@ -90,20 +95,17 @@ class CookieManager:
             filename: 文件名（可选，默认使用account_id）
         """
         if filename is None:
-            filename = f"{account_id}_cookies.json"
+            filename = f"{account_id}.json"
 
-        filepath = os.path.join(self.cache_dir, filename)
+        filepath = self.cookie_dir / filename
 
         if not os.path.exists(filepath):
             self.logger.warning(f"Cookie文件不存在: {filepath}")
             return False
 
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
+            with filepath.open('r', encoding='utf-8') as f:
                 data = json.load(f)
-
-            # 清空现有Cookie
-            session.cookies.clear()
 
             # 添加Cookie
             for cookie_dict in data['cookies']:
@@ -112,7 +114,7 @@ class CookieManager:
                 if expires and expires != -1:
                     # 如果Cookie已过期，跳过
                     if datetime.now().timestamp() > expires:
-                        continue
+                        return False
 
                 cookie = requests.cookies.create_cookie(
                     name=cookie_dict['name'],
