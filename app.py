@@ -1,17 +1,15 @@
 import json
 import sys
-import sys
-
 import requests
+
 from PyQt5.QtCore import Qt, QByteArray, QTimer
 from PyQt5.QtGui import QPixmap, QCursor
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit, QToolTip,
                              QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox)
-
+from pathlib import Path
 from agent import Agent
 from constant import *
-from util import curr_milliseconds,ensure_dir_exists
-from pathlib import Path
+from util import curr_milliseconds, ensure_dir_exists
 
 
 class ClickableLabel(QLabel):
@@ -125,7 +123,7 @@ class LoginWindow(QWidget):
         password = None
         if account and 'username' in account:
             username = account['username']
-        if password and 'password' in account:
+        if account and 'password' in account:
             password = account['password']
         # 用户名输入
         username_layout = QVBoxLayout()                

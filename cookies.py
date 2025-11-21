@@ -1,12 +1,12 @@
 import json
-import pickle
 import logging
 import os
-from typing import Dict, List, Optional
+import pickle
 import requests
-from http.cookiejar import CookieJar, Cookie
-from datetime import datetime, timedelta
+
+from datetime import datetime
 from pathlib import Path
+from typing import List, Optional
 from util import ensure_dir_exists
 
 
