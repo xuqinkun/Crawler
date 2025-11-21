@@ -1,7 +1,11 @@
-import time
 import base64
+import json
+
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
+
+def base64_encode(s: str):
+    return base64.b64encode(s.encode('utf-8')).decode('utf-8')
 
 def get_encrypt_by_str(text: str, timestamp: int) -> str:
     """
@@ -30,10 +34,6 @@ def get_encrypt_by_str(text: str, timestamp: int) -> str:
     return base64.b64encode(encrypted_data).decode('utf-8')
 
 # 测试函数
-if __name__ == "__main__":    
-    test_s = "2b13257592627"
-    test_time = int(time.time() * 1000)
-
-    result = get_encrypt_by_str(test_s, test_time)
-    # EZrln8B6nXhmdGAQEXQdSXvExN2q4StStCZ70+zvkC+LOBWi120a0H7GO+bBvb+d
-    print(f"加密结果: {result}")
+if __name__ == "__main__":
+    d = {"deviceId":"708e8b72-0a46-49c0-beb9-fe5a77efb999","userId":"","parentId":"","sessionId":1763689374075,"optOut":False,"lastEventId":0}
+    s = json.dumps(d)
