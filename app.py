@@ -5,7 +5,7 @@ import requests
 from PyQt5.QtCore import Qt, QByteArray, QTimer
 from PyQt5.QtGui import QPixmap, QCursor
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit, QToolTip,
-                             QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox)
+                             QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox, QListWidget, QListWidgetItem)
 from pathlib import Path
 from agent import Agent
 from constant import *
@@ -51,6 +51,7 @@ class LoginWindow(QWidget):
         self.captcha_url = f"{ROOT}/{VERIFY_PAGE}?t={curr_milliseconds()}"
         self.accounts = {}
         self.cache_dir = Path('.cache')
+        self.login_success_callback = None  # 添加回调函数属性
         ensure_dir_exists(self.cache_dir)
         self.init_ui()
         self.refresh_captcha()
@@ -247,6 +248,9 @@ class LoginWindow(QWidget):
             current_account_file =  self.cache_dir / f'current_account.txt'
             with current_account_file.open('w', encoding=DEFAULT_ENCODING) as f:
                 f.write(username)
+            if self.login_success_callback:
+                self.login_success_callback(username)
+            self.close()
         else:
             QMessageBox.warning(self, '失败', '登录失败，请检查用户名、密码和验证码')
             # 登录失败后刷新验证码
@@ -286,25 +290,198 @@ class MainWindow(QWidget):
 
     def __init__(self):
         super().__init__()
+        self.cache_dir = Path('.cache')
+        self.accounts = {}
+        self.login_window = None
         self.init_ui()
+        self.load_accounts()
 
     def init_ui(self):
-        self.setWindowTitle('主窗口')
-        self.setFixedSize(600, 400)
+        self.setWindowTitle('账号管理器')
+        self.setFixedSize(500, 400)
+        self.setStyleSheet("""
+                    QWidget {
+                        background-color: #f5f5f5;
+                        font-family: 'Microsoft YaHei';
+                    }
+                    QLabel {
+                        color: #333;
+                        font-size: 16px;
+                        font-weight: bold;
+                        margin-bottom: 10px;
+                    }
+                    QListWidget {
+                        background-color: white;
+                        border: 1px solid #ddd;
+                        border-radius: 6px;
+                        padding: 5px;
+                        font-size: 14px;
+                    }
+                    QPushButton {
+                        background-color: #4CAF50;
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                        padding: 8px 15px;
+                        font-size: 14px;
+                        font-weight: bold;
+                        min-height: 20px;
+                    }
+                    QPushButton:hover {
+                        background-color: #45a049;
+                    }
+                    QPushButton#deleteBtn {
+                        background-color: #f44336;
+                        padding: 5px 10px;
+                        font-size: 12px;
+                    }
+                    QPushButton#deleteBtn:hover {
+                        background-color: #d32f2f;
+                    }
+                    QPushButton#addBtn {
+                        background-color: #2196F3;
+                        margin: 10px;
+                        padding: 10px;
+                    }
+                    QPushButton#addBtn:hover {
+                        background-color: #1976D2;
+                    }
+                """)
 
-        layout = QVBoxLayout()
-        welcome_label = QLabel('欢迎使用系统！')
-        welcome_label.setAlignment(Qt.AlignCenter)
-        welcome_label.setStyleSheet("font-size: 24px; color: #333;")
+        # 主布局
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(20, 20, 20, 20)
 
-        layout.addWidget(welcome_label)
-        self.setLayout(layout)
+        # 标题
+        title_label = QLabel('账号管理')
+        title_label.setAlignment(Qt.AlignCenter)
+
+        # 账号列表
+        self.account_list = QListWidget()
+
+        # 添加账号按钮
+        self.add_btn = QPushButton('添加账号')
+        self.add_btn.setObjectName("addBtn")
+        self.add_btn.clicked.connect(self.add_account)
+
+        # 添加控件到布局
+        main_layout.addWidget(title_label)
+        main_layout.addWidget(self.account_list)
+        main_layout.addWidget(self.add_btn)
+
+        self.setLayout(main_layout)
+
+    def add_account(self):
+        """添加新账号"""
+        # self.hide()
+        self.login_window = LoginWindow()
+        # 重写登录窗口的关闭事件，使其登录成功后通知主窗口
+        self.login_window.login_success_callback = self.on_login_success
+        self.login_window.show()
+
+    def on_login_success(self, username):
+        """登录成功回调"""
+        # 添加账号
+        if username in self.accounts:
+            print(f"账号已存在: {username}")
+            return False
+        self.create_account_item(username)
+        return True
+
+    def load_accounts(self):
+        """加载已保存的账号"""
+        self.accounts = {}
+        self.account_list.clear()
+
+        accounts_dir = self.cache_dir / 'accounts'
+        if not accounts_dir.exists():
+            return
+
+        for f in accounts_dir.glob("*.json"):
+            try:
+                with f.open('r', encoding=DEFAULT_ENCODING) as fp:
+                    account = json.load(fp)
+                if 'username' in account:
+                    username = account['username']
+                    self.accounts[username] = account
+
+                    # 添加到列表
+                    item = QListWidgetItem()
+                    widget = self.create_account_item(username)
+                    item.setSizeHint(widget.sizeHint())
+                    self.account_list.addItem(item)
+                    self.account_list.setItemWidget(item, widget)
+            except Exception as e:
+                print(f"加载账号失败: {e}")
+
+    def create_account_item(self, username):
+        """创建账号列表项"""
+        widget = QWidget()
+        widget.setStyleSheet("background-color: transparent;")
+
+        layout = QHBoxLayout()
+
+        # 账号名标签
+        label = QLabel(username)
+        label.setStyleSheet("font-size: 14px; color: #333;")
+        label.setAlignment(Qt.AlignVCenter)  # 水平和垂直居中对齐
+
+        # 删除按钮
+        delete_btn = QPushButton('删除')
+        delete_btn.setObjectName("deleteBtn")
+        delete_btn.setFixedSize(60, 30)  # 固定大小
+        delete_btn.setStyleSheet("""
+                QPushButton#deleteBtn {
+                    background-color: #ff4444;
+                    color: white;
+                    border: none;
+                    border-radius: 5px;                    
+                    font-size: 18px;
+                    font-weight: bold;                    
+                }
+                QPushButton#deleteBtn:hover {
+                    background-color: #cc0000;
+                }
+            """)
+        delete_btn.clicked.connect(lambda _, u=username: self.delete_account(u))
+
+        layout.addWidget(label)
+        layout.addStretch()
+        layout.addWidget(delete_btn)
+        layout.setAlignment(Qt.AlignVCenter)
+
+        widget.setLayout(layout)
+        return widget
+
+    def delete_account(self, username):
+        """删除账号"""
+        reply = QMessageBox.question(self, '确认删除', f'确定要删除账号 {username} 吗？',
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            # 删除账号文件
+            account_file = self.cache_dir / 'accounts' / f'{username}.json'
+            if account_file.exists():
+                account_file.unlink()
+
+            # 如果是当前账号，也删除current_account.txt
+            current_account_file = self.cache_dir / 'current_account.txt'
+            if current_account_file.exists():
+                with current_account_file.open('r', encoding=DEFAULT_ENCODING) as f:
+                    current_username = f.read().strip()
+                if current_username == username:
+                    current_account_file.unlink()
+
+            # 重新加载列表
+            self.load_accounts()
 
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
 
-    login_window = LoginWindow()
-    login_window.show()
+    # login_window = LoginWindow()
+    # login_window.show()
+    window = MainWindow()
+    window.show()
 
     sys.exit(app.exec_())

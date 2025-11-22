@@ -4,6 +4,7 @@ import requests
 
 from constant import *
 from bs4 import BeautifulSoup
+from product import Product
 from cookies import CookieManager
 from util import curr_milliseconds, ensure_dir_exists
 from urllib.parse import quote
@@ -53,8 +54,24 @@ class Agent():
         image = response.content
         return image
 
-    def login(self, username: str, password: str, captcha: str):
-        self.cookie_manager.load_cookies_json(self.session, username)
+    def login(self, username: str, password: str = '', captcha: str = ''):
+        valid = self.cookie_manager.load_cookies_json(self.session, username)
+        if not valid:
+            self.session.cookies.set('_dxm_ad_client_id', 'EF5ED1455E6745E01606AB28D81ACD6D7')
+            self.session.cookies.set('MYJ_MKTG_fapsc5t4tc', 'JTdCJTdE')
+            self.session.cookies.set('Hm_lvt_f8001a3f3d9bf5923f780580eb550c0b', '1763520089')
+            self.session.cookies.set('Hm_lpvt_f8001a3f3d9bf5923f780580eb550c0b', '1763520789')
+            self.session.cookies.set('tfstk',
+            'g69ibNvtcC5syNy_smXssb8KNHcK6O6f7EeAktQqTw7QWPe90iDDkeUvXf69nxbHlNCOQReciw8CDKn1MeXDRe8cGc_AuZYv0CnKeYK6ft6qn4H-ew9J1yd0QZPZ0vScnGRo2uJBft6qJkeqwYx6W1iWANWqx9ScjZWV_skFTwsY_Z8V76zFqg6VuE8VTwSRVrzaQZrUYwsV3Z8V3DxFRiXVuEWqxHllHR7y3p9Elv2jyqWZdQjGsa-N7hKpLJ141nb33-JHt_Qrow243pjw0MGGM8cAzQ_Owa8EpRXDYiYOJUkzK95kNnIDSA2NBBRBCOpKru1Mowfyp64a_gXGS_JNOly2AsRHKOpZl7tpxN5lpBhIWsBMSQ_5_XgBoHb9udfUS2QvwHpNtUuLKE1DNnIDSA2wzgWuT7uoC-sEDpPbG1SCxapyAdO5PQkrhDm3Nt1NAG3-xDVbG1SCxannx7Of_Msty')
+
+            myj = {"deviceId": "708e8b72-0a46-49c0-beb9-fe5a77efb999",
+                   "userId": "",
+                   "parentId": "",
+                   "sessionId": curr_milliseconds(),
+                   "optOut": False,
+                   "lastEventId": 0}
+            myj_text = json.dumps(myj)
+            self.session.cookies.set('MYJ_fapsc5t4tc', base64_encode(quote(myj_text)))
         ts = curr_milliseconds()
         payload = {
             'account': get_encrypt_by_str(username, ts),
@@ -65,24 +82,48 @@ class Agent():
             "remeber": "remeber",
             "url": ""
         }
-
-        self.session.cookies.set('_dxm_ad_client_id', 'EF5ED1455E6745E01606AB28D81ACD6D7')
-        self.session.cookies.set('MYJ_MKTG_fapsc5t4tc', 'JTdCJTdE')
-        self.session.cookies.set('Hm_lvt_f8001a3f3d9bf5923f780580eb550c0b', '1763520089')
-        self.session.cookies.set('Hm_lpvt_f8001a3f3d9bf5923f780580eb550c0b', '1763520789')
-        self.session.cookies.set('tfstk',
-        'g69ibNvtcC5syNy_smXssb8KNHcK6O6f7EeAktQqTw7QWPe90iDDkeUvXf69nxbHlNCOQReciw8CDKn1MeXDRe8cGc_AuZYv0CnKeYK6ft6qn4H-ew9J1yd0QZPZ0vScnGRo2uJBft6qJkeqwYx6W1iWANWqx9ScjZWV_skFTwsY_Z8V76zFqg6VuE8VTwSRVrzaQZrUYwsV3Z8V3DxFRiXVuEWqxHllHR7y3p9Elv2jyqWZdQjGsa-N7hKpLJ141nb33-JHt_Qrow243pjw0MGGM8cAzQ_Owa8EpRXDYiYOJUkzK95kNnIDSA2NBBRBCOpKru1Mowfyp64a_gXGS_JNOly2AsRHKOpZl7tpxN5lpBhIWsBMSQ_5_XgBoHb9udfUS2QvwHpNtUuLKE1DNnIDSA2wzgWuT7uoC-sEDpPbG1SCxapyAdO5PQkrhDm3Nt1NAG3-xDVbG1SCxannx7Of_Msty')
-
-        myj = {"deviceId": "708e8b72-0a46-49c0-beb9-fe5a77efb999",
-               "userId": "",
-               "parentId": "",
-               "sessionId": curr_milliseconds(),
-               "optOut": False,
-               "lastEventId": 0}
-        myj_text = json.dumps(myj)
-        self.session.cookies.set('MYJ_fapsc5t4tc', base64_encode(quote(myj_text)))
         login_url = f'{ROOT}/{LOGIN_PAGE}'
         resp = self.session.post(login_url, data=payload, headers=self.headers)
         data = json.loads(resp.text)
-        self.cookie_manager.save_cookies_json(self.session, account=username)
+        if not valid:
+            self.cookie_manager.save_cookies_json(self.session, account=username)
         return 'error' not in data
+
+
+    def post(self, url, payload):
+        resp = self.session.post(url, data=payload, headers=self.headers)
+        return resp.text
+
+
+if __name__ == '__main__':
+    agent = Agent()
+    agent.login('2b13257592627')
+    page_url = f'{ROOT}/{PAGE_LIST}'
+    page_no = 1
+    payload = {
+        'pageNo': 1,
+        'pageSize' : 100,
+        'total' : 0,
+        'searchType' : 0,
+        'searchValue' : None,
+        'shopId' : -1,
+        'dxmState' : 'online',
+        'dxmOfflineState' : None,
+        'productStatusType' : 'onSelling',
+        'sortValue' : 2,
+        'sortName' : 13,
+    }
+    response = agent.post(page_url, payload)
+    pages = json.loads(response)
+    page = pages['data']['page']
+    total_pages = page['totalSize']
+    product_mapping = {}
+    for item in page['list']:
+        id = item['id']
+        product = Product(id=id, url=item['sourceUrl'])
+        product_mapping[id] = product
+    for id, item in product_mapping.items():
+        response = requests.get(item.url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        print()
+    pass
