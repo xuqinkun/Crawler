@@ -1,9 +1,10 @@
 import json
+import os
 import sys
 import requests
 
-from PyQt5.QtCore import Qt, QByteArray, QTimer
-from PyQt5.QtGui import QPixmap, QCursor
+from PyQt5.QtCore import Qt, QByteArray, QTimer, QSize
+from PyQt5.QtGui import QPixmap, QCursor, QIcon
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit, QToolTip,
                              QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox, QListWidget, QListWidgetItem)
 from pathlib import Path
@@ -11,6 +12,8 @@ from agent import Agent
 from constant import *
 from util import curr_milliseconds, ensure_dir_exists
 
+
+home_path = os.path.expanduser('~')
 
 class ClickableLabel(QLabel):
     """可点击的QLabel，用于验证码图片"""
@@ -43,6 +46,93 @@ class ClickableLabel(QLabel):
         """立即显示工具提示"""
         pos = self.mapToGlobal(self.rect().topRight())
         QToolTip.showText(pos, "点击刷新验证码", self)
+
+
+class ButtonSwitch(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.is_pressed = False
+        self.initUI()
+
+    def initUI(self):
+        layout = QVBoxLayout()
+
+        # 创建按钮
+        self.button = QPushButton('', self)
+        self.button.setFixedSize(40, 60)
+        self.button.setStyleSheet("""
+                QPushButton {
+                    background-color: transparent;
+                    border: none;
+                }
+            """)
+        # 设置图标
+        self.normal_icon = QIcon('icon/play_fill.png')
+        self.pressed_icon = QIcon('icon/pause.png')
+
+        # 设置图标大小
+        self.button.setIconSize(QSize(40, 40))
+        self.button.setIcon(self.normal_icon)
+
+        # 连接信号
+        self.button.clicked.connect(self.on_button_clicked)
+
+        layout.addWidget(self.button)
+        self.setLayout(layout)
+        self.setWindowTitle('图标按钮示例')
+        self.setGeometry(0, 0, 100, 100)
+
+    def on_button_clicked(self):
+        # 切换图标
+        if self.is_pressed:
+            self.button.setIcon(self.normal_icon)
+            self.is_pressed = False
+        else:
+            self.button.setIcon(self.pressed_icon)
+            self.is_pressed = True
+
+
+class Button(QWidget):
+    def __init__(self, icon_path: str):
+        super().__init__()
+        self.is_pressed = False
+        self.initUI(icon_path)
+
+    def initUI(self, icon_path: str):
+        layout = QVBoxLayout()
+
+        # 创建按钮
+        self.button = QPushButton('', self)
+        self.button.setFixedSize(30, 40)
+        self.button.setStyleSheet("""
+                QPushButton {
+                    background-color: transparent;
+                    border: none;
+                }
+            """)
+        # 设置图标
+        self.normal_icon = QIcon(icon_path)
+
+        # 设置图标大小
+        self.button.setIconSize(QSize(30, 30))
+        self.button.setIcon(self.normal_icon)
+
+        # 连接信号
+        self.button.clicked.connect(self.on_button_clicked)
+
+        layout.addWidget(self.button)
+        self.setLayout(layout)
+        self.setWindowTitle('图标按钮示例')
+        self.setGeometry(0, 0, 100, 100)
+
+    def on_button_clicked(self):
+        # 切换图标
+        if self.is_pressed:
+            self.button.setIcon(self.normal_icon)
+            self.is_pressed = False
+        else:
+            self.button.setIcon(self.pressed_icon)
+            self.is_pressed = True
 
 class LoginWindow(QWidget):
     def __init__(self):
@@ -299,6 +389,28 @@ class MainWindow(QWidget):
     def init_ui(self):
         self.setWindowTitle('账号管理器')
         self.setFixedSize(500, 400)
+
+        self.normal_style = """
+                    QPushButton {
+                        border: none;
+                        background-image: url('icon/play_fill.png');
+                        background-repeat: no-repeat;
+                        background-position: center;
+                    }
+                    QPushButton:hover {
+                        # background-image: url('hover.png');
+                    }
+                """
+
+        # 点击后状态 - 按下背景
+        self.pressed_style = """
+                    QPushButton {
+                        border: none;
+                        background-image: url('pressed.png');
+                        background-repeat: no-repeat;
+                        background-position: center;
+                    }
+                """
         self.setStyleSheet("""
                     QWidget {
                         background-color: #f5f5f5;
@@ -418,40 +530,62 @@ class MainWindow(QWidget):
     def create_account_item(self, username):
         """创建账号列表项"""
         widget = QWidget()
-        widget.setStyleSheet("background-color: transparent;")
+        widget.setStyleSheet("""
+            QWidget {
+                # background-color: #f0f0f0;  /* 浅色背景 */
+                border: 1px solid #333333;   /* 深色边框 */
+            }
+        """)
+        # 使用垂直布局来排列账号名和下载地址
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(2)  # 减小间距
+        main_layout.setContentsMargins(5, 5, 5, 5)
 
-        layout = QHBoxLayout()
+        top_layout = QHBoxLayout()
 
         # 账号名标签
-        label = QLabel(username)
-        label.setStyleSheet("font-size: 14px; color: #333;")
-        label.setAlignment(Qt.AlignVCenter)  # 水平和垂直居中对齐
+        account_name_label = QLabel(username)
+        account_name_label.setStyleSheet("font-size: 14px; color: #333;")
+        account_name_label.setAlignment(Qt.AlignVCenter)  # 水平和垂直居中对齐
+
+        download_path_label = QLabel(f"下载地址：{home_path}")  # 默认下载路径
+        download_path_label.setStyleSheet("font-size: 12px; color: #666;")
+        download_path_label.setAlignment(Qt.AlignVCenter)
+
+        # 修改下载地址按钮
+        modify_path_btn = Button('icon/folder.png')  # 使用文件夹图标
+
+        # 下载按钮
+        download_btn = ButtonSwitch()
+        download_btn.setObjectName("downloadBtn")
+        # download_btn.setFixedSize(30, 30)
+        # download_btn.setStyleSheet(self.normal_style)
 
         # 删除按钮
-        delete_btn = QPushButton('删除')
+        delete_btn = Button('icon/delete.png')
         delete_btn.setObjectName("deleteBtn")
-        delete_btn.setFixedSize(60, 30)  # 固定大小
-        delete_btn.setStyleSheet("""
-                QPushButton#deleteBtn {
-                    background-color: #ff4444;
-                    color: white;
-                    border: none;
-                    border-radius: 5px;                    
-                    font-size: 18px;
-                    font-weight: bold;                    
-                }
-                QPushButton#deleteBtn:hover {
-                    background-color: #cc0000;
-                }
-            """)
-        delete_btn.clicked.connect(lambda _, u=username: self.delete_account(u))
 
-        layout.addWidget(label)
-        layout.addStretch()
-        layout.addWidget(delete_btn)
-        layout.setAlignment(Qt.AlignVCenter)
+        # delete_btn.clicked.connect(lambda _, u=username: self.delete_account(u))
 
-        widget.setLayout(layout)
+        top_layout.addWidget(account_name_label)
+        top_layout.addWidget(download_btn)
+        top_layout.addWidget(delete_btn)
+        top_layout.addStretch()
+        top_layout.setAlignment(Qt.AlignVCenter)
+
+        # 下层水平布局：下载地址和修改按钮
+        bottom_layout = QHBoxLayout()
+
+        bottom_layout.addWidget(download_path_label)
+        bottom_layout.addWidget(modify_path_btn)
+        bottom_layout.addStretch()  # 添加弹性空间
+        bottom_layout.setAlignment(Qt.AlignVCenter)
+
+        # 将上下两层布局添加到主布局
+        main_layout.addLayout(top_layout)
+        main_layout.addLayout(bottom_layout)
+
+        widget.setLayout(main_layout)
         return widget
 
     def delete_account(self, username):
