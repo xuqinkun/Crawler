@@ -49,9 +49,12 @@ class ClickableLabel(QLabel):
 
 
 class ButtonSwitch(QWidget):
-    def __init__(self):
+    def __init__(self, normal_icon: str, pressed_icon: str, callback: callable):
         super().__init__()
         self.is_pressed = False
+        self.normal_icon = QIcon(normal_icon)
+        self.pressed_icon = QIcon(pressed_icon)
+        self.callback = callback
         self.initUI()
 
     def initUI(self):
@@ -67,8 +70,7 @@ class ButtonSwitch(QWidget):
                 }
             """)
         # 设置图标
-        self.normal_icon = QIcon('icon/play_fill.png')
-        self.pressed_icon = QIcon('icon/pause.png')
+
 
         # 设置图标大小
         self.button.setIconSize(QSize(40, 40))
@@ -90,6 +92,7 @@ class ButtonSwitch(QWidget):
         else:
             self.button.setIcon(self.pressed_icon)
             self.is_pressed = True
+            self.callback()
 
 
 class Button(QWidget):
@@ -135,9 +138,9 @@ class Button(QWidget):
             self.is_pressed = True
 
 class LoginWindow(QWidget):
-    def __init__(self):
+    def __init__(self, agent: Agent):
         super().__init__()
-        self.agent = Agent()
+        self.agent = agent
         self.captcha_url = f"{ROOT}/{VERIFY_PAGE}?t={curr_milliseconds()}"
         self.accounts = {}
         self.cache_dir = Path('.cache')
@@ -339,7 +342,7 @@ class LoginWindow(QWidget):
             with current_account_file.open('w', encoding=DEFAULT_ENCODING) as f:
                 f.write(username)
             if self.login_success_callback:
-                self.login_success_callback(username)
+                self.login_success_callback(username, self.agent)
             self.close()
         else:
             QMessageBox.warning(self, '失败', '登录失败，请检查用户名、密码和验证码')
@@ -384,6 +387,7 @@ class MainWindow(QWidget):
         self.accounts = {}
         self.login_window = None
         self.init_ui()
+        self.agents = {}
         self.load_accounts()
 
     def init_ui(self):
@@ -486,14 +490,15 @@ class MainWindow(QWidget):
 
     def add_account(self):
         """添加新账号"""
-        # self.hide()
-        self.login_window = LoginWindow()
+        agent = Agent()
+        self.login_window = LoginWindow(agent)
         # 重写登录窗口的关闭事件，使其登录成功后通知主窗口
         self.login_window.login_success_callback = self.on_login_success
         self.login_window.show()
 
-    def on_login_success(self, username):
+    def on_login_success(self, username, agent: Agent):
         """登录成功回调"""
+        self.agents[username] = agent
         # 添加账号
         if username in self.accounts:
             print(f"账号已存在: {username}")
@@ -517,7 +522,9 @@ class MainWindow(QWidget):
                 if 'username' in account:
                     username = account['username']
                     self.accounts[username] = account
-
+                    agent = Agent()
+                    agent.login(username)
+                    self.agents[username] = agent
                     # 添加到列表
                     item = QListWidgetItem()
                     widget = self.create_account_item(username)
@@ -556,7 +563,10 @@ class MainWindow(QWidget):
         modify_path_btn = Button('icon/folder.png')  # 使用文件夹图标
 
         # 下载按钮
-        download_btn = ButtonSwitch()
+        agent = self.agents[username]
+        download_btn = ButtonSwitch(normal_icon='icon/play_fill.png',
+                                    pressed_icon='icon/pause.png',
+                                    callback=agent.download)
         download_btn.setObjectName("downloadBtn")
         # download_btn.setFixedSize(30, 30)
         # download_btn.setStyleSheet(self.normal_style)
