@@ -11,8 +11,11 @@ from pathlib import Path
 from agent import Agent
 from constant import *
 from util import curr_milliseconds, ensure_dir_exists
+from db_util import AmazonDatabase
 
-
+db = AmazonDatabase()
+db.connect()
+db.init()
 home_path = os.path.expanduser('~')
 
 class ClickableLabel(QLabel):
@@ -212,21 +215,10 @@ class LoginWindow(QWidget):
             margin-bottom: 0px;
         """)
 
-        account = self.load_current_account()
-        username = None
-        password = None
-        if account and 'username' in account:
-            username = account['username']
-        if account and 'password' in account:
-            password = account['password']
         # 用户名输入
-        username_layout = QVBoxLayout()                
-
+        username_layout = QVBoxLayout()
         self.username_input = QLineEdit()
-        if username:
-            self.username_input.setText(username)
-        else:
-            self.username_input.setPlaceholderText('请输入账号')
+        self.username_input.setPlaceholderText('请输入账号')
         self.username_input.setMinimumHeight(40)
         username_layout.addWidget(self.username_input)
 
@@ -234,10 +226,7 @@ class LoginWindow(QWidget):
         password_layout = QVBoxLayout()
 
         self.password_input = QLineEdit()
-        if password:
-            self.password_input.setText(password)
-        else:
-            self.password_input.setPlaceholderText('请输入密码')
+        self.password_input.setPlaceholderText('请输入密码')
         self.password_input.setEchoMode(QLineEdit.Password)
         self.password_input.setMinimumHeight(40)
         password_layout.setContentsMargins(0,5,0,5)
@@ -281,23 +270,6 @@ class LoginWindow(QWidget):
         main_layout.addWidget(self.login_btn)
 
         self.setLayout(main_layout)
-        
-    def load_current_account(self):
-        accounts_dir = self.cache_dir / 'accounts'
-        if not accounts_dir.exists():
-            return None
-        for f in accounts_dir.glob("*.json"):
-            with f.open('r', encoding=DEFAULT_ENCODING) as fp:
-                account = json.load(fp)
-            if 'username' not in account:
-                continue
-            self.accounts[account['username']] = account
-        current_account_file = self.cache_dir / 'current_account.txt'
-        with current_account_file.open('r', encoding=DEFAULT_ENCODING) as f:
-            username = f.read()
-        if username not in self.accounts:
-            return None
-        return self.accounts[username]
 
     def refresh_captcha(self):
         """从指定URL获取验证码图片"""
@@ -336,11 +308,9 @@ class LoginWindow(QWidget):
 
         # 这里添加实际的登录验证逻辑
         if self.validate_login(username, password, captcha):
-            QMessageBox.information(self, '成功', '登录成功！')
-            # 登录成功后的操作，比如打开主窗口
-            current_account_file =  self.cache_dir / f'current_account.txt'
-            with current_account_file.open('w', encoding=DEFAULT_ENCODING) as f:
-                f.write(username)
+            # QMessageBox.information(self, '成功', '登录成功！')
+            # 登录成功后保存账号信息
+            db.upsert_account(username, password)
             if self.login_success_callback:
                 self.login_success_callback(username, self.agent)
             self.close()
@@ -391,7 +361,7 @@ class MainWindow(QWidget):
         self.load_accounts()
 
     def init_ui(self):
-        self.setWindowTitle('账号管理器')
+        self.setWindowTitle('爬虫工具')
         self.setFixedSize(500, 400)
 
         self.normal_style = """
@@ -465,9 +435,9 @@ class MainWindow(QWidget):
                 """)
 
         # 主布局
-        main_layout = QVBoxLayout()
-        main_layout.setSpacing(10)
-        main_layout.setContentsMargins(20, 20, 20, 20)
+        self.main_layout = QVBoxLayout()
+        self.main_layout.setSpacing(10)
+        self.main_layout.setContentsMargins(20, 20, 20, 20)
 
         # 标题
         title_label = QLabel('账号管理')
@@ -482,18 +452,19 @@ class MainWindow(QWidget):
         self.add_btn.clicked.connect(self.add_account)
 
         # 添加控件到布局
-        main_layout.addWidget(title_label)
-        main_layout.addWidget(self.account_list)
-        main_layout.addWidget(self.add_btn)
+        self. main_layout.addWidget(title_label)
+        self.main_layout.addWidget(self.account_list)
+        self.main_layout.addWidget(self.add_btn)
 
-        self.setLayout(main_layout)
+        self.setLayout(self.main_layout)
 
     def add_account(self):
         """添加新账号"""
-        agent = Agent()
+        agent = Agent(db)
         self.login_window = LoginWindow(agent)
-        # 重写登录窗口的关闭事件，使其登录成功后通知主窗口
         self.login_window.login_success_callback = self.on_login_success
+        # 模态对话框方式
+        self.login_window.setWindowModality(Qt.ApplicationModal)
         self.login_window.show()
 
     def on_login_success(self, username, agent: Agent):
@@ -510,29 +481,20 @@ class MainWindow(QWidget):
         """加载已保存的账号"""
         self.accounts = {}
         self.account_list.clear()
-
-        accounts_dir = self.cache_dir / 'accounts'
-        if not accounts_dir.exists():
-            return
-
-        for f in accounts_dir.glob("*.json"):
-            try:
-                with f.open('r', encoding=DEFAULT_ENCODING) as fp:
-                    account = json.load(fp)
-                if 'username' in account:
-                    username = account['username']
-                    self.accounts[username] = account
-                    agent = Agent()
-                    agent.login(username)
-                    self.agents[username] = agent
-                    # 添加到列表
-                    item = QListWidgetItem()
-                    widget = self.create_account_item(username)
-                    item.setSizeHint(widget.sizeHint())
-                    self.account_list.addItem(item)
-                    self.account_list.setItemWidget(item, widget)
-            except Exception as e:
-                print(f"加载账号失败: {e}")
+        try:
+            self.accounts = db.get_all_accounts()
+            for (username, password) in self.accounts:
+                agent = Agent(db)
+                agent.login(username)
+                self.agents[username] = agent
+                # 添加到列表
+                item = QListWidgetItem()
+                widget = self.create_account_item(username)
+                item.setSizeHint(widget.sizeHint())
+                self.account_list.addItem(item)
+                self.account_list.setItemWidget(item, widget)
+        except Exception as e:
+            print(f"加载账号失败: {e}")
 
     def create_account_item(self, username):
         """创建账号列表项"""

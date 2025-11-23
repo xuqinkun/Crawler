@@ -1,11 +1,7 @@
 import json
-
-import jsonpickle
 import requests
 from PyQt5.QtCore import QObject, pyqtSignal
-from pyperclip import is_available
-from shapely.speedups import available
-
+from db_util import AmazonDatabase
 from constant import *
 from bs4 import BeautifulSoup
 from product import Product
@@ -20,8 +16,9 @@ class Agent(QObject):
     data_ready = pyqtSignal(str)  # 数据准备就绪信号
     finished = pyqtSignal()  # 任务完成信号
 
-    def __init__(self, cache_dir: str = CACHE_DIR):
+    def __init__(self, db: AmazonDatabase, cache_dir: str = CACHE_DIR):
         super().__init__()
+        self.db = db
         self.cache_dir = Path(cache_dir)
         self.cookie_dir = self.cache_dir / 'cookies'
         self.url_dir = self.cache_dir / 'urls'
@@ -161,16 +158,17 @@ class Agent(QObject):
 
 
 if __name__ == '__main__':
-    agent = Agent()
+    db = AmazonDatabase()
+    agent = Agent(db)
     agent.login('2b13257592627')
-    products = agent.get_product_list()
+    product_urls = agent.get_product_list()
     session = requests.Session()
-
+    product_uncompleted = agent.db.get_product_uncompleted()
     session.cookies.update(amazon_cookies)
-    for id, product in products.items():
+    for id, product in product_urls.items():
         url = product['url']
         product_save = Product(id, url)
-        resp = session.get(url, headers=agent.headers)
+        resp = session.get(url, headers=agent.headers, cookies=amazon_cookies)
         start = url.rfind('/')
         end = url.rfind('?')
         if end == -1:
@@ -187,6 +185,7 @@ if __name__ == '__main__':
         main_page = session.get(f'https://www.amazon.com/dp/{asin}?th=1', headers=agent.headers)
         soup = BeautifulSoup(main_page.text, 'html.parser')
         no_availability_info = soup.select_one('p.a-text-bold')
+        availability = False
         # 缺货
         if no_availability_info and 'No featured offers available' in no_availability_info.text:
             product_save.completed = True
@@ -210,14 +209,16 @@ if __name__ == '__main__':
             soup.select('#twisterAvailability')
             stock_info = soup.select_one('#twisterAvailability')
             if availability and 'In Stock' in availability.text.strip():
-                available = True
+                availability = True
             elif 'isAvailable' in info and info['isAvailable']:
-                available = True
+                availability = True
             elif stock_info:
                 available_text = stock_info.text.strip()
                 if 'In Stock' in available_text:
-                    available = True
+                    availability = True
             else:
-                available = False
-            product_save.available = available
+                availability = False
+        product_save.availability = availability
+        agent.db.insert_product(product_save)
+    agent.db.close()
 
