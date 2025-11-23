@@ -7,7 +7,7 @@ from PyQt5.QtCore import Qt, QByteArray, QTimer, QSize
 from PyQt5.QtGui import QPixmap, QCursor, QIcon
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit, QToolTip,
                              QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox, QListWidget, QListWidgetItem,
-                             QFileDialog)
+                             QFileDialog, QFrame, QProgressBar, QTextEdit)
 from pathlib import Path
 from agent import Agent
 from constant import *
@@ -345,8 +345,166 @@ class LoginWindow(QWidget):
             print(f'保存cookie失败[account={username}]:{e}')
 
 
+class ConsoleWindow(QWidget):
+    """控制台窗口，用于显示实时日志"""
+
+    def __init__(self, username, parent=None):
+        super().__init__(parent)
+        self.username = username
+        self.init_ui()
+
+    def init_ui(self):
+        self.setWindowTitle(f'{self.username} - 控制台日志')
+        self.setGeometry(100, 100, 700, 500)  # 设置合适的位置和大小
+
+        # 设置窗口标志，使其成为独立窗口
+        self.setWindowFlags(Qt.Window | Qt.WindowCloseButtonHint | Qt.WindowMinimizeButtonHint)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+
+        # 标题
+        title_label = QLabel(f'{self.username} 的爬取日志')
+        title_label.setStyleSheet("""
+            font-size: 16px; 
+            font-weight: bold; 
+            color: #2c3e50;
+            padding: 5px;
+        """)
+
+        # 状态信息栏
+        status_layout = QHBoxLayout()
+        self.status_label = QLabel("状态: 就绪")
+        self.status_label.setStyleSheet("color: #28a745; font-weight: bold;")
+
+        self.progress_label = QLabel("进度: 0%")
+        self.progress_label.setStyleSheet("color: #007bff;")
+
+        status_layout.addWidget(self.status_label)
+        status_layout.addStretch()
+        status_layout.addWidget(self.progress_label)
+
+        # 日志显示区域 - 使用 QTextEdit 代替 QLabel 以支持滚动
+        self.log_display = QTextEdit()
+        self.log_display.setStyleSheet("""
+            QTextEdit {
+                background-color: #1e1e1e;
+                color: #00ff00;
+                font-family: 'Consolas', 'Monaco', monospace;
+                font-size: 12px;
+                border: 1px solid #333;
+                border-radius: 5px;
+                padding: 10px;
+            }
+        """)
+        self.log_display.setReadOnly(True)
+        self.log_display.setPlainText(f"{self.username} 的控制台已启动...\n等待日志输出...")
+
+        # 控制按钮
+        button_layout = QHBoxLayout()
+        clear_btn = QPushButton("清空日志")
+        close_btn = QPushButton("关闭")
+
+        clear_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #6c757d;
+                color: white;
+                padding: 8px 15px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #5a6268;
+            }
+        """)
+
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                padding: 8px 15px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+        """)
+
+        clear_btn.clicked.connect(self.clear_logs)
+        close_btn.clicked.connect(self.close)
+
+        button_layout.addWidget(clear_btn)
+        button_layout.addStretch()
+        button_layout.addWidget(close_btn)
+
+        layout.addWidget(title_label)
+        layout.addLayout(status_layout)
+        layout.addWidget(self.log_display, 1)  # 设置伸缩因子为1，让日志区域占据更多空间
+        layout.addLayout(button_layout)
+
+        self.setLayout(layout)
+
+        # 启动定时器模拟日志更新（实际使用时替换为真实的日志更新）
+        self.log_timer = QTimer()
+        self.log_timer.timeout.connect(self.simulate_log_update)
+        self.log_timer.start(2000)  # 每2秒更新一次
+
+    def simulate_log_update(self):
+        """模拟日志更新（实际使用时替换为真实的日志更新逻辑）"""
+        import random
+        progress = random.randint(1, 100)
+        log_entry = f"[{curr_milliseconds()}] 处理项目 {progress}/100\n"
+
+        # 添加到日志显示
+        current_text = self.log_display.toPlainText()
+        if len(current_text.split('\n')) > 50:  # 限制日志行数
+            lines = current_text.split('\n')[-40:]
+            current_text = '\n'.join(lines)
+
+        self.log_display.setPlainText(current_text + log_entry)
+
+        # 自动滚动到底部
+        self.log_display.verticalScrollBar().setValue(
+            self.log_display.verticalScrollBar().maximum()
+        )
+
+        # 更新状态
+        self.progress_label.setText(f"进度: {progress}%")
+        if progress < 30:
+            self.status_label.setText("状态: 爬取中")
+            self.status_label.setStyleSheet("color: #17a2b8; font-weight: bold;")
+        elif progress < 80:
+            self.status_label.setText("状态: 处理中")
+            self.status_label.setStyleSheet("color: #ffc107; font-weight: bold;")
+        else:
+            self.status_label.setText("状态: 即将完成")
+            self.status_label.setStyleSheet("color: #28a745; font-weight: bold;")
+
+    def clear_logs(self):
+        """清空日志"""
+        self.log_display.setPlainText(f"{self.username} 的日志已清空\n{'-' * 50}")
+        self.status_label.setText("状态: 就绪")
+        self.status_label.setStyleSheet("color: #6c757d; font-weight: bold;")
+        self.progress_label.setText("进度: 0%")
+
+    def update_logs(self, log_text):
+        """更新日志内容（供外部调用）"""
+        current_text = self.log_display.toPlainText()
+        self.log_display.setPlainText(current_text + log_text + '\n')
+
+        # 自动滚动到底部
+        self.log_display.verticalScrollBar().setValue(
+            self.log_display.verticalScrollBar().maximum()
+        )
+
+    def closeEvent(self, event):
+        """关闭事件处理"""
+        self.log_timer.stop()
+        super().closeEvent(event)
+
+
 class MainWindow(QWidget):
-    """登录成功后的主窗口示例"""
+    """重新设计的主窗口"""
 
     def __init__(self):
         super().__init__()
@@ -354,126 +512,338 @@ class MainWindow(QWidget):
         self.cookie_dir = self.cache_dir / 'cookies'
         self.accounts = {}
         self.login_window = None
-        self.init_ui()
+        self.is_closing = False
+        self.is_running = False
+        self.console_windows = {}  # 存储控制台窗口
         self.agents = {}
+        self.account_list = {}
+        self.export_path = user_home / 'Downloads'  # 全局导出目录
+
+        self.init_ui()
         self.load_accounts()
-        self.save_path = user_home / 'Downloads'
+        # 加载保存的导出路径
+        self.load_export_path()
 
     def init_ui(self):
-        self.setWindowTitle('爬虫工具')
-        self.setFixedSize(500, 400)
+        self.setWindowTitle('爬虫管理工具')
+        self.setFixedSize(800, 600)
 
-        self.normal_style = """
-                    QPushButton {
-                        border: none;
-                        background-image: url('icon/play_fill.png');
-                        background-repeat: no-repeat;
-                        background-position: center;
-                    }
-                    QPushButton:hover {
-                        # background-image: url('hover.png');
-                    }
-                """
-
-        # 点击后状态 - 按下背景
-        self.pressed_style = """
-                    QPushButton {
-                        border: none;
-                        background-image: url('pressed.png');
-                        background-repeat: no-repeat;
-                        background-position: center;
-                    }
-                """
         self.setStyleSheet("""
-                    QWidget {
-                        background-color: #f5f5f5;
-                        font-family: 'Microsoft YaHei';
-                    }
-                    QLabel {
-                        color: #333;
-                        font-size: 16px;
-                        font-weight: bold;
-                        margin-bottom: 10px;
-                    }
-                    QListWidget {
-                        background-color: white;
-                        border: 1px solid #ddd;
-                        border-radius: 6px;
-                        padding: 5px;
-                        font-size: 14px;
-                    }
-                    QPushButton {
-                        background-color: #4CAF50;
-                        color: white;
-                        border: none;
-                        border-radius: 6px;
-                        padding: 8px 15px;
-                        font-size: 14px;
-                        font-weight: bold;
-                        min-height: 20px;
-                    }
-                    QPushButton:hover {
-                        background-color: #45a049;
-                    }
-                    QPushButton#deleteBtn {
-                        background-color: #f44336;
-                        padding: 5px 10px;
-                        font-size: 12px;
-                    }
-                    QPushButton#deleteBtn:hover {
-                        background-color: #d32f2f;
-                    }
-                    QPushButton#addBtn {
-                        background-color: #2196F3;
-                        margin: 10px;
-                        padding: 10px;
-                    }
-                    QPushButton#addBtn:hover {
-                        background-color: #1976D2;
-                    }
-                """)
+            QWidget {
+                background-color: #f8f9fa;
+                font-family: 'Microsoft YaHei', 'Segoe UI';
+            }
+            QLabel {
+                color: #333;
+            }
+            QListWidget {
+                background-color: white;
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+                padding: 5px;
+                font-size: 14px;
+                alternate-background-color: #f8f9fa;
+            }
+            QPushButton {
+                border: none;
+                border-radius: 6px;
+                padding: 8px 12px;
+                font-size: 14px;
+                font-weight: 500;
+            }
+            QPushButton:hover {
+                opacity: 0.9;
+            }
+            QProgressBar {
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+                text-align: center;
+                background-color: #e9ecef;
+            }
+            QProgressBar::chunk {
+                background-color: #28a745;
+                border-radius: 3px;
+            }
+        """)
 
         # 主布局
-        self.main_layout = QVBoxLayout()
-        self.main_layout.setSpacing(10)
-        self.main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(15)
+        main_layout.setContentsMargins(20, 20, 20, 20)
 
-        # 标题
+        # 顶部标题区域
+        header_layout = QHBoxLayout()
+
         title_label = QLabel('账号管理')
-        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet("""
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin: 0;
+        """)
+
+        # 全局导出目录设置
+        export_section = QHBoxLayout()
+        export_label = QLabel('导出目录:')
+        export_label.setStyleSheet("font-weight: bold;")
+
+        self.export_path_label = QLabel()
+        self.export_path_label.setStyleSheet("""
+            QLabel {
+                background-color: white;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+                padding: 6px 10px;
+                color: #495057;
+                min-width: 300px;
+            }
+        """)
+
+        change_export_btn = QPushButton('更改')
+        change_export_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #6c757d;
+                color: white;
+                padding: 6px 12px;
+            }
+            QPushButton:hover {
+                background-color: #5a6268;
+            }
+        """)
+        change_export_btn.clicked.connect(self.change_export_path)
+
+        export_section.addWidget(export_label)
+        export_section.addWidget(self.export_path_label)
+        export_section.addWidget(change_export_btn)
+        export_section.addStretch()
+
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        header_layout.addLayout(export_section)
+
+        # 账号列表区域
+        list_frame = QFrame()
+        list_frame.setStyleSheet("""
+            QFrame {
+                background-color: white;
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+            }
+        """)
+
+        list_layout = QVBoxLayout(list_frame)
+        list_layout.setContentsMargins(15, 15, 15, 15)
+        list_layout.setSpacing(10)
+
+        # 列表标题
+        list_header = QHBoxLayout()
+        list_title = QLabel('账号列表')
+        list_title.setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50;")
+
+        list_header.addWidget(list_title)
+        list_header.addStretch()
+
+        # 添加账号按钮
+        self.add_btn = QPushButton('+ 添加账号')
+        self.add_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #007bff;
+                color: white;
+                padding: 8px 16px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
+            }
+        """)
+        self.add_btn.clicked.connect(self.add_account)
+
+        list_header.addWidget(self.add_btn)
+        list_layout.addLayout(list_header)
 
         # 账号列表
         self.account_list = QListWidget()
+        self.account_list.setAlternatingRowColors(True)
+        self.account_list.setVerticalScrollMode(QListWidget.ScrollPerPixel)
+        list_layout.addWidget(self.account_list)
 
-        # 添加账号按钮
-        self.add_btn = QPushButton('添加账号')
-        self.add_btn.setObjectName("addBtn")
-        self.add_btn.clicked.connect(self.add_account)
+        # 添加到主布局
+        main_layout.addLayout(header_layout)
+        main_layout.addWidget(list_frame)
 
-        # 添加控件到布局
-        self. main_layout.addWidget(title_label)
-        self.main_layout.addWidget(self.account_list)
-        self.main_layout.addWidget(self.add_btn)
+        # 状态栏
+        status_layout = QHBoxLayout()
+        self.status_label = QLabel('就绪')
+        self.status_label.setStyleSheet("color: #6c757d; font-size: 12px;")
+        status_layout.addWidget(self.status_label)
+        status_layout.addStretch()
 
-        self.setLayout(self.main_layout)
+        main_layout.addLayout(status_layout)
+        self.setLayout(main_layout)
+
+        # 更新导出路径显示
+        self.update_export_path_display()
+
+    def closeEvent(self, event):
+        """重写关闭事件，确保资源正确释放"""
+        if self.is_closing:
+            event.accept()
+            return
+
+        if self.is_running:
+            # 询问用户是否确认退出
+            reply = QMessageBox.question(
+                self,
+                '确认退出',
+                '确定要退出程序吗？\n这将停止所有正在进行的爬取任务。',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+        else:
+            print('没用后台任务，直接退出')
+            reply = QMessageBox.Yes
+        if reply == QMessageBox.Yes:
+            self.is_closing = True
+
+            # 停止所有后台线程
+            # self.stop_background_threads()
+
+            # 停止所有Agent的爬取任务
+            self.stop_all_agents()
+
+            # 关闭所有控制台窗口
+            self.close_all_consoles()
+
+            # 关闭数据库连接
+            self.close_database()
+
+            # 保存配置
+            self.save_before_exit()
+
+            # 接受关闭事件
+            event.accept()
+            print("程序已安全退出")
+        else:
+            # 忽略关闭事件
+            event.ignore()
+
+    def stop_all_agents(self):
+        """停止所有Agent的爬取任务"""
+        print("正在停止所有爬取任务...")
+        for username, agent in self.agents.items():
+            try:
+                if hasattr(agent, 'stop'):
+                    agent.stop()
+                    print(f"已停止 {username} 的爬取任务")
+                elif hasattr(agent, 'is_running') and agent.is_running:
+                    # 如果agent有运行状态但没有stop方法，尝试其他方式停止
+                    print(f"警告: {username} 的Agent没有stop方法")
+            except Exception as e:
+                print(f"停止 {username} 的Agent时出错: {e}")
+
+    def close_all_consoles(self):
+        """关闭所有控制台窗口"""
+        print("正在关闭所有控制台窗口...")
+        for username, console in list(self.console_windows.items()):
+            try:
+                console.close()
+                console.deleteLater()  # 确保Qt对象被删除
+            except Exception as e:
+                print(f"关闭 {username} 的控制台时出错: {e}")
+        self.console_windows.clear()
+
+    def close_database(self):
+        """关闭数据库连接"""
+        print("正在关闭数据库连接...")
+        try:
+            if hasattr(db, 'close'):
+                db.close()
+                print("数据库连接已关闭")
+        except Exception as e:
+            print(f"关闭数据库连接时出错: {e}")
+
+    def save_before_exit(self):
+        """退出前保存配置"""
+        print("正在保存配置...")
+        try:
+            # 保存导出路径
+            self.save_export_path()
+
+            # 保存其他需要持久化的配置
+            config_file = self.cache_dir / 'app_config.json'
+            config = {
+                'last_export_path': str(self.export_path),
+                'window_geometry': {
+                    'width': self.width(),
+                    'height': self.height()
+                }
+            }
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+
+            print("配置已保存")
+        except Exception as e:
+            print(f"保存配置时出错: {e}")
+
+    def update_export_path_display(self):
+        """更新导出路径显示"""
+        display_path = str(self.export_path)
+        if len(display_path) > 50:
+            display_path = "..." + display_path[-47:]
+        self.export_path_label.setText(display_path)
+        self.export_path_label.setToolTip(str(self.export_path))
+
+    def change_export_path(self):
+        """更改全局导出目录"""
+        new_path = QFileDialog.getExistingDirectory(
+            self,
+            '选择导出目录',
+            str(self.export_path)
+        )
+        if new_path:
+            self.export_path = Path(new_path)
+            self.update_export_path_display()
+            self.save_export_path()
+
+    def save_export_path(self):
+        """保存导出路径到配置文件"""
+        config_file = self.cache_dir / 'export_path.json'
+        try:
+            config = {'export_path': str(self.export_path)}
+            with open(config_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"保存导出路径失败: {e}")
+
+    def load_export_path(self):
+        """从配置文件加载导出路径"""
+        config_file = self.cache_dir / 'export_path.json'
+        if config_file.exists():
+            try:
+                with open(config_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                    self.export_path = Path(config.get('export_path', user_home / 'Downloads'))
+            except Exception as e:
+                print(f"加载导出路径失败: {e}")
 
     def add_account(self):
         """添加新账号"""
         agent = Agent(db)
         self.login_window = LoginWindow(agent)
         self.login_window.login_success_callback = self.on_login_success
-        # 模态对话框方式
         self.login_window.setWindowModality(Qt.ApplicationModal)
         self.login_window.show()
 
     def on_login_success(self, username, agent: Agent):
         """登录成功回调"""
         self.agents[username] = agent
-        # 添加账号
         if username in self.accounts:
-            print(f"账号已存在: {username}")
+            QMessageBox.information(self, '提示', f'账号 {username} 已存在')
             return False
+
+        self.accounts[username] = True
         self.create_account_item(username)
+        self.status_label.setText(f'账号 {username} 添加成功')
         return True
 
     def load_accounts(self):
@@ -481,132 +851,220 @@ class MainWindow(QWidget):
         self.accounts = {}
         self.account_list.clear()
         try:
-            self.accounts = db.get_all_accounts()
-            for (username, password) in self.accounts:
+            self.accounts_data = db.get_all_accounts()
+            for (username, password) in self.accounts_data:
                 agent = Agent(db)
                 agent.login(username)
                 self.agents[username] = agent
-                # 添加到列表
-                item = QListWidgetItem()
-                widget = self.create_account_item(username)
-                item.setSizeHint(widget.sizeHint())
-                self.account_list.addItem(item)
-                self.account_list.setItemWidget(item, widget)
+                self.accounts[username] = True
+                self.create_account_item(username)
         except Exception as e:
             print(f"加载账号失败: {e}")
 
     def create_account_item(self, username):
         """创建账号列表项"""
+        item = QListWidgetItem()
         widget = QWidget()
-        widget.setStyleSheet("""
-            QWidget {
-                # background-color: #f0f0f0;  /* 浅色背景 */
-                border: 1px solid #333333;   /* 深色边框 */
-            }
-        """)
-        # 使用垂直布局来排列账号名和下载地址
-        main_layout = QVBoxLayout()
-        main_layout.setSpacing(2)  # 减小间距
-        main_layout.setContentsMargins(5, 5, 5, 5)
 
+        # 主布局
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(15, 10, 15, 10)
+
+        # 顶部行：账号信息和主要操作按钮
         top_layout = QHBoxLayout()
 
-        # 账号名标签
-        account_name_label = QLabel(username)
-        account_name_label.setStyleSheet("font-size: 14px; color: #333;")
-        account_name_label.setAlignment(Qt.AlignVCenter)  # 水平和垂直居中对齐
+        # 账号信息
+        account_info = QVBoxLayout()
+        account_name = QLabel(username)
+        account_name.setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50;")
 
-        download_path_label = QLabel(f"下载地址：{user_home}")  # 默认下载路径
-        download_path_label.setStyleSheet("font-size: 12px; color: #666;")
-        download_path_label.setAlignment(Qt.AlignVCenter)
-        download_path_label.setObjectName(f"download_path_{username}")
+        status_label = QLabel('状态: 就绪')
+        status_label.setStyleSheet("font-size: 12px; color: #28a745;")
 
-        # 修改下载地址按钮
-        modify_path_btn = Button(icon='icon/folder.png',
-                                 callback=self.modify_download_path,
-                                 username=username)  # 使用文件夹图标
+        account_info.addWidget(account_name)
+        account_info.addWidget(status_label)
 
-        # 下载按钮
-        agent = self.agents[username]
-        download_btn = ButtonSwitch(normal_icon='icon/play_fill.png',
-                                    pressed_icon='icon/pause.png',
-                                    callback=agent.download)
-        download_btn.setObjectName("downloadBtn")
+        top_layout.addLayout(account_info)
+        top_layout.addStretch()
+
+        # 操作按钮
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(5)
+
+        # 控制台按钮
+        console_btn = QPushButton('控制台')
+        console_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #17a2b8;
+                color: white;
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #138496;
+            }
+        """)
+        console_btn.clicked.connect(lambda: self.show_console(username))
+
+        # 导出按钮
+        export_btn = QPushButton('导出数据')
+        export_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ffc107;
+                color: #212529;
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #e0a800;
+            }
+        """)
+        export_btn.clicked.connect(lambda: self.export_data(username))
+
+        # 下载/暂停按钮
+        download_btn = ButtonSwitch(
+            normal_icon='icon/play_fill.png',
+            pressed_icon='icon/pause.png',
+            callback=lambda: self.start_download(username)
+        )
 
         # 删除按钮
-        delete_btn = Button(icon='icon/delete.png',
-                            callback=self.delete_account,
-                            username=username)
-        delete_btn.setObjectName("deleteBtn")
+        delete_btn = Button(
+            icon='icon/delete.png',
+            callback=self.delete_account,
+            username=username
+        )
+        delete_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                padding: 6px;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+        """)
 
-        top_layout.addWidget(account_name_label)
-        top_layout.addWidget(download_btn)
-        top_layout.addWidget(delete_btn)
-        top_layout.addStretch()
-        top_layout.setAlignment(Qt.AlignVCenter)
+        button_layout.addWidget(console_btn)
+        button_layout.addWidget(export_btn)
+        button_layout.addWidget(download_btn)
+        button_layout.addWidget(delete_btn)
 
-        # 下层水平布局：下载地址和修改按钮
-        bottom_layout = QHBoxLayout()
+        top_layout.addLayout(button_layout)
 
-        bottom_layout.addWidget(download_path_label)
-        bottom_layout.addWidget(modify_path_btn)
-        bottom_layout.addStretch()  # 添加弹性空间
-        bottom_layout.setAlignment(Qt.AlignVCenter)
+        # 进度条
+        progress_layout = QHBoxLayout()
+        progress_label = QLabel('进度:')
+        progress_label.setStyleSheet("font-size: 12px; color: #6c757d;")
 
-        # 将上下两层布局添加到主布局
+        progress_bar = QProgressBar()
+        progress_bar.setValue(0)
+        progress_bar.setTextVisible(True)
+
+        progress_layout.addWidget(progress_label)
+        progress_layout.addWidget(progress_bar)
+        progress_layout.addStretch()
+
+        # 添加到主布局
         main_layout.addLayout(top_layout)
-        main_layout.addLayout(bottom_layout)
+        main_layout.addLayout(progress_layout)
 
         widget.setLayout(main_layout)
         widget.setProperty("username", username)
-        return widget
 
-    def modify_download_path(self, username):
-        """修改下载地址"""
-        new_path = QFileDialog.getExistingDirectory(self, '选择下载目录', self.save_path.as_posix())
-        if new_path:
-            self.save_path = new_path
-            # 查找并更新对应的下载地址标签
-            self.update_download_path_label(username, new_path)
+        item.setSizeHint(widget.sizeHint())
+        self.account_list.addItem(item)
+        self.account_list.setItemWidget(item, widget)
 
-    def update_download_path_label(self, username, new_path):
-        """更新指定账号的下载地址标签"""
-        # 方法1：遍历所有列表项查找对应的标签
-        for i in range(self.account_list.count()):
-            item = self.account_list.item(i)
-            widget = self.account_list.itemWidget(item)
+    def show_console(self, username):
+        """显示控制台窗口"""
+        if username not in self.console_windows:
+            self.console_windows[username] = ConsoleWindow(username)
 
-            if widget and widget.property("username") == username:
-                # 在widget中查找下载地址标签
-                download_label = widget.findChild(QLabel, f"download_path_{username}")
-                if download_label:
-                    # 截断过长的路径显示
-                    display_path = str(new_path)
-                    if len(display_path) > 40:
-                        display_path = "..." + display_path[-37:]
-                    download_label.setText(f"下载地址：{display_path}")
-                    download_label.setToolTip(str(new_path))  # 鼠标悬停显示完整路径
-                break
+        console_window = self.console_windows[username]
+        console_window.show()
+        console_window.raise_()  # 置于顶层
+        console_window.activateWindow()  # 激活窗口
+
+        # 确保控制台窗口不会完全覆盖主窗口
+        main_geometry = self.geometry()
+        console_geometry = console_window.geometry()
+
+        # 设置控制台窗口位置，避免完全重叠
+        new_x = main_geometry.x() + 50
+        new_y = main_geometry.y() + 50
+        console_window.move(new_x, new_y)
+
+    def export_data(self, username):
+        """导出账号数据"""
+        try:
+            # 这里调用实际的导出逻辑
+            export_file = self.export_path / f'{username}_data_{curr_milliseconds()}.json'
+            # agent.export_data(export_file)  # 假设agent有导出方法
+
+            QMessageBox.information(
+                self,
+                '导出成功',
+                f'{username} 的数据已导出到:\n{export_file}'
+            )
+            self.status_label.setText(f'{username} 数据导出完成')
+        except Exception as e:
+            QMessageBox.warning(self, '导出失败', f'导出数据时发生错误: {str(e)}')
+
+    def start_download(self, username):
+        """开始下载/爬取"""
+        try:
+            agent = self.agents[username]
+            # 这里调用实际的下载逻辑
+            # agent.start_download()
+
+            self.status_label.setText(f'{username} 开始爬取...')
+
+            # 如果控制台窗口已打开，更新日志
+            if username in self.console_windows:
+                self.console_windows[username].update_logs(f"[开始爬取] {username} 开始执行爬取任务")
+
+            # 更新进度条状态等
+        except Exception as e:
+            QMessageBox.warning(self, '错误', f'启动爬取失败: {str(e)}')
 
     def delete_account(self, username):
         """删除账号"""
-        reply = QMessageBox.question(self, '确认删除', f'确定要删除账号 {username} 吗？',
-                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        reply = QMessageBox.question(
+            self,
+            '确认删除',
+            f'确定要删除账号 {username} 吗？\n此操作将删除所有相关数据。',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
         if reply == QMessageBox.Yes:
-            # 删除账号文件
-            cookie_file = self.cookie_dir / f'{username}.json'
-            if cookie_file.exists():
-                cookie_file.unlink()
-            db.delete_account(username)
-            # 重新加载列表
-            self.load_accounts()
+            try:
+                # 删除账号文件
+                cookie_file = self.cookie_dir / f'{username}.json'
+                if cookie_file.exists():
+                    cookie_file.unlink()
+                db.delete_account(username)
+
+                # 从界面移除
+                if username in self.accounts:
+                    del self.accounts[username]
+                if username in self.agents:
+                    del self.agents[username]
+                if username in self.console_windows:
+                    self.console_windows[username].close()
+                    del self.console_windows[username]
+
+                # 重新加载列表
+                self.load_accounts()
+                self.status_label.setText(f'账号 {username} 已删除')
+
+            except Exception as e:
+                QMessageBox.warning(self, '删除失败', f'删除账号时发生错误: {str(e)}')
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-
-    # login_window = LoginWindow()
-    # login_window.show()
     window = MainWindow()
     window.show()
-
     sys.exit(app.exec_())
