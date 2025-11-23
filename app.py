@@ -6,7 +6,8 @@ import requests
 from PyQt5.QtCore import Qt, QByteArray, QTimer, QSize
 from PyQt5.QtGui import QPixmap, QCursor, QIcon
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit, QToolTip,
-                             QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox, QListWidget, QListWidgetItem)
+                             QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox, QListWidget, QListWidgetItem,
+                             QFileDialog)
 from pathlib import Path
 from agent import Agent
 from constant import *
@@ -16,7 +17,7 @@ from db_util import AmazonDatabase
 db = AmazonDatabase()
 db.connect()
 db.init()
-home_path = os.path.expanduser('~')
+user_home = Path(os.path.expanduser('~'))
 
 class ClickableLabel(QLabel):
     """可点击的QLabel，用于验证码图片"""
@@ -99,12 +100,14 @@ class ButtonSwitch(QWidget):
 
 
 class Button(QWidget):
-    def __init__(self, icon_path: str):
+    def __init__(self, icon: str, callback: callable, *args, **kwargs):
         super().__init__()
+        self.icon = icon
         self.is_pressed = False
-        self.initUI(icon_path)
+        self.initUI()
+        self.callback = lambda: callback(*args, **kwargs)  # 将参数包装到回调函数中
 
-    def initUI(self, icon_path: str):
+    def initUI(self):
         layout = QVBoxLayout()
 
         # 创建按钮
@@ -117,7 +120,7 @@ class Button(QWidget):
                 }
             """)
         # 设置图标
-        self.normal_icon = QIcon(icon_path)
+        self.normal_icon = QIcon(self.icon)
 
         # 设置图标大小
         self.button.setIconSize(QSize(30, 30))
@@ -132,13 +135,7 @@ class Button(QWidget):
         self.setGeometry(0, 0, 100, 100)
 
     def on_button_clicked(self):
-        # 切换图标
-        if self.is_pressed:
-            self.button.setIcon(self.normal_icon)
-            self.is_pressed = False
-        else:
-            self.button.setIcon(self.pressed_icon)
-            self.is_pressed = True
+        self.callback()
 
 class LoginWindow(QWidget):
     def __init__(self, agent: Agent):
@@ -354,11 +351,13 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.cache_dir = Path('.cache')
+        self.cookie_dir = self.cache_dir / 'cookies'
         self.accounts = {}
         self.login_window = None
         self.init_ui()
         self.agents = {}
         self.load_accounts()
+        self.save_path = user_home / 'Downloads'
 
     def init_ui(self):
         self.setWindowTitle('爬虫工具')
@@ -517,12 +516,15 @@ class MainWindow(QWidget):
         account_name_label.setStyleSheet("font-size: 14px; color: #333;")
         account_name_label.setAlignment(Qt.AlignVCenter)  # 水平和垂直居中对齐
 
-        download_path_label = QLabel(f"下载地址：{home_path}")  # 默认下载路径
+        download_path_label = QLabel(f"下载地址：{user_home}")  # 默认下载路径
         download_path_label.setStyleSheet("font-size: 12px; color: #666;")
         download_path_label.setAlignment(Qt.AlignVCenter)
+        download_path_label.setObjectName(f"download_path_{username}")
 
         # 修改下载地址按钮
-        modify_path_btn = Button('icon/folder.png')  # 使用文件夹图标
+        modify_path_btn = Button(icon='icon/folder.png',
+                                 callback=self.modify_download_path,
+                                 username=username)  # 使用文件夹图标
 
         # 下载按钮
         agent = self.agents[username]
@@ -530,14 +532,12 @@ class MainWindow(QWidget):
                                     pressed_icon='icon/pause.png',
                                     callback=agent.download)
         download_btn.setObjectName("downloadBtn")
-        # download_btn.setFixedSize(30, 30)
-        # download_btn.setStyleSheet(self.normal_style)
 
         # 删除按钮
-        delete_btn = Button('icon/delete.png')
+        delete_btn = Button(icon='icon/delete.png',
+                            callback=self.delete_account,
+                            username=username)
         delete_btn.setObjectName("deleteBtn")
-
-        # delete_btn.clicked.connect(lambda _, u=username: self.delete_account(u))
 
         top_layout.addWidget(account_name_label)
         top_layout.addWidget(download_btn)
@@ -558,7 +558,35 @@ class MainWindow(QWidget):
         main_layout.addLayout(bottom_layout)
 
         widget.setLayout(main_layout)
+        widget.setProperty("username", username)
         return widget
+
+    def modify_download_path(self, username):
+        """修改下载地址"""
+        new_path = QFileDialog.getExistingDirectory(self, '选择下载目录', self.save_path.as_posix())
+        if new_path:
+            self.save_path = new_path
+            # 查找并更新对应的下载地址标签
+            self.update_download_path_label(username, new_path)
+
+    def update_download_path_label(self, username, new_path):
+        """更新指定账号的下载地址标签"""
+        # 方法1：遍历所有列表项查找对应的标签
+        for i in range(self.account_list.count()):
+            item = self.account_list.item(i)
+            widget = self.account_list.itemWidget(item)
+
+            if widget and widget.property("username") == username:
+                # 在widget中查找下载地址标签
+                download_label = widget.findChild(QLabel, f"download_path_{username}")
+                if download_label:
+                    # 截断过长的路径显示
+                    display_path = str(new_path)
+                    if len(display_path) > 40:
+                        display_path = "..." + display_path[-37:]
+                    download_label.setText(f"下载地址：{display_path}")
+                    download_label.setToolTip(str(new_path))  # 鼠标悬停显示完整路径
+                break
 
     def delete_account(self, username):
         """删除账号"""
@@ -566,21 +594,12 @@ class MainWindow(QWidget):
                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if reply == QMessageBox.Yes:
             # 删除账号文件
-            account_file = self.cache_dir / 'accounts' / f'{username}.json'
-            if account_file.exists():
-                account_file.unlink()
-
-            # 如果是当前账号，也删除current_account.txt
-            current_account_file = self.cache_dir / 'current_account.txt'
-            if current_account_file.exists():
-                with current_account_file.open('r', encoding=DEFAULT_ENCODING) as f:
-                    current_username = f.read().strip()
-                if current_username == username:
-                    current_account_file.unlink()
-
+            cookie_file = self.cookie_dir / f'{username}.json'
+            if cookie_file.exists():
+                cookie_file.unlink()
+            db.delete_account(username)
             # 重新加载列表
             self.load_accounts()
-
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

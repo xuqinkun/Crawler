@@ -245,6 +245,18 @@ class AmazonDatabase:
             self.conn.close()
             print("数据库连接已关闭")
 
+    def delete_account(self, username):
+        """删除账户"""
+        try:
+            self.cursor.execute('''
+                DELETE FROM accounts WHERE username = ?
+            ''', (username,))
+            self.conn.commit()
+            return True
+        except sqlite3.Error as e:
+            print(f"删除账户错误: {e}")
+            return  False
+
 
 # 使用示例
 if __name__ == "__main__":
