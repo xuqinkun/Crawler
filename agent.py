@@ -12,9 +12,6 @@ from crypto import get_encrypt_by_str, base64_encode
 from pathlib import Path
 
 class Agent(QObject):
-    progress_updated = pyqtSignal(int)  # 进度更新信号
-    data_ready = pyqtSignal(str)  # 数据准备就绪信号
-    finished = pyqtSignal()  # 任务完成信号
 
     def __init__(self, db: AmazonDatabase, cache_dir: str = CACHE_DIR):
         super().__init__()
@@ -45,6 +42,8 @@ class Agent(QObject):
         self.session = requests.Session()
         self.online = False
         self.username = None
+        self.total_url = 0
+        self.completed_url = 0
 
     def load_cookies(self, account: str):
         if account is None:
@@ -57,6 +56,12 @@ class Agent(QObject):
         except Exception as e:
             print(f'读取cookie错误[account={account}]: {e}')
             return {}
+
+    def get_progress(self):
+        if self.total_url == 0:
+            return 0
+        else:
+            return (int)(100 * self.completed_url / self.total_url)
 
     def get_captcha(self):
         ts = curr_milliseconds()

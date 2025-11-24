@@ -5,13 +5,14 @@ import subprocess
 import sys
 import requests
 
-from PyQt5.QtCore import Qt, QByteArray, QTimer, QSize
+from PyQt5.QtCore import Qt, QByteArray, QTimer, QSize, QThread
 from PyQt5.QtGui import QPixmap, QCursor, QIcon
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit, QToolTip,
                              QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox, QListWidget, QListWidgetItem,
                              QFileDialog, QFrame, QProgressBar, QTextEdit)
 from pathlib import Path
 from agent import Agent
+from worker import CrawlWorker
 from constant import *
 from util import curr_milliseconds, ensure_dir_exists
 from db_util import AmazonDatabase
@@ -62,6 +63,7 @@ class DownloadButton(QPushButton):
         self.username = username
         self.callback = callback
         self.is_running = False
+        self.is_finished = False
         self.init_ui()
 
     def init_ui(self):
@@ -75,7 +77,27 @@ class DownloadButton(QPushButton):
 
     def update_style(self):
         """根据状态更新按钮样式"""
-        if self.is_running:
+        if self.is_finished:
+            # 运行状态 - 橙色暂停按钮
+            self.setStyleSheet("""
+                   QPushButton {
+                       background-color: #a8a8a8;
+                       color: #e0e0e0;
+                       border: none;
+                       border-radius: 6px;
+                       font-size: 12px;
+                       font-weight: bold;
+                       padding: 6px 12px;
+                   }
+                   QPushButton:hover {
+                       background-color: #e96a00;
+                   }
+                   QPushButton:pressed {
+                       background-color: #d45a00;
+                   }
+            """)
+            self.setText('开始')
+        elif self.is_running:
             # 运行状态 - 橙色暂停按钮
             self.setStyleSheet("""
                 QPushButton {
@@ -594,9 +616,12 @@ class MainWindow(QWidget):
         self.is_closing = False
         self.is_running = False
         self.console_windows = {}  # 存储控制台窗口
+        self.crawl_workers = {}  # 存储爬取工作线程
+        self.crawl_threads = {}  # 存储线程对象
         self.agents = {}
         self.account_list = {}
-        self.download_buttons = {}
+        self.start_buttons = {}
+        self.restart_buttons = {}
         self.export_path = user_home / 'Documents' / 'amazon'  # 全局导出目录
         ensure_dir_exists(self.export_path)
         self.init_ui()
@@ -1071,8 +1096,8 @@ class MainWindow(QWidget):
         export_btn.clicked.connect(lambda: self.export_data(username))
 
         # 下载/暂停按钮
-        download_btn = DownloadButton(username, self.on_download_toggle)
-        self.download_buttons[username] = download_btn  # 存储按钮引用
+        start_btn = DownloadButton(username, self.on_start_toggle)
+        self.start_buttons[username] = start_btn  # 存储按钮引用
 
         # 删除按钮
         delete_btn = QPushButton('删除')
@@ -1100,7 +1125,8 @@ class MainWindow(QWidget):
         delete_btn.clicked.connect(lambda: self.delete_account(username))
 
         # 复位按钮样式
-        restart_btn = QPushButton('重启')
+        clear_btn = QPushButton('清除')
+        self.restart_buttons[username] = clear_btn
         restart_btn_style = """
         QPushButton {
             background-color: #6f42c1;
@@ -1123,11 +1149,12 @@ class MainWindow(QWidget):
             color: #e0e0e0;
         }
         """
-        restart_btn.setStyleSheet(restart_btn_style)
-        restart_btn.setDisabled(True)
+        clear_btn.setStyleSheet(restart_btn_style)
+        clear_btn.setDisabled(True)
+        clear_btn.clicked.connect(lambda: self.clear(username))
 
-        button_layout.addWidget(download_btn)
-        button_layout.addWidget(restart_btn)
+        button_layout.addWidget(start_btn)
+        button_layout.addWidget(clear_btn)
         button_layout.addWidget(export_btn)
         button_layout.addWidget(console_btn)
         button_layout.addWidget(delete_btn)
@@ -1149,7 +1176,6 @@ class MainWindow(QWidget):
 
         # 添加到主布局
         main_layout.addLayout(top_layout)
-        # main_layout.addLayout(progress_layout)
 
         widget.setLayout(main_layout)
         widget.setProperty("username", username)
@@ -1160,19 +1186,19 @@ class MainWindow(QWidget):
 
     def simulate_progress_update(self, username):
         """模拟进度更新（实际使用时替换为真实的进度回调）"""
-        if username not in self.download_buttons:
+        if username not in self.start_buttons:
             return
 
         # 只有运行状态才更新进度
-        if not self.download_buttons[username].is_running:
+        if not self.start_buttons[username].is_running:
             return
 
         # 模拟进度递增
         def update_progress(progress):
-            if username not in self.download_buttons:
+            if username not in self.start_buttons:
                 return
 
-            if not self.download_buttons[username].is_running:
+            if not self.start_buttons[username].is_running:
                 return
 
             # 更新进度条
@@ -1193,11 +1219,11 @@ class MainWindow(QWidget):
                     break
 
             # 继续模拟进度
-            if progress < 100 and self.download_buttons[username].is_running:
+            if progress < 100 and self.start_buttons[username].is_running:
                 QTimer.singleShot(100, lambda: update_progress(progress + 1))
             elif progress >= 100:
                 # 完成时自动停止
-                self.download_buttons[username].set_running(False)
+                self.start_buttons[username].set_running(False)
                 self.update_account_status(username, '已完成', '#28a745')
                 self.status_label.setText(f'{username} 爬取完成')
 
@@ -1207,12 +1233,13 @@ class MainWindow(QWidget):
         # 开始模拟进度
         QTimer.singleShot(500, lambda: update_progress(0))
 
-    def on_download_toggle(self, username, is_running):
-        """下载按钮状态切换回调"""
+    def on_start_toggle(self, username, is_running):
+        """启动按钮状态切换回调"""
         try:
             agent = self.agents[username]
             if is_running:
-                # 开始下载
+                # 开始爬取
+                self.start_crawling(username)
                 self.status_label.setText(f'{username} 开始爬取...')
 
                 # 更新状态标签
@@ -1229,11 +1256,16 @@ class MainWindow(QWidget):
                 self.simulate_progress_update(username)
 
             else:
-                # 暂停下载
+                # 暂停爬取
+                self.stop_crawling(username)
                 self.status_label.setText(f'{username} 已暂停')
 
                 # 更新状态标签
-                self.update_account_status(username, '已暂停', '#ffc107')
+                self.update_account_status(
+                    username=username,
+                    status='已暂停',
+                    progress=agent.get_progress(),
+                    color='#ffc107')
 
                 # 更新控制台日志
                 if username in self.console_windows:
@@ -1245,11 +1277,199 @@ class MainWindow(QWidget):
         except Exception as e:
             QMessageBox.warning(self, '错误', f'操作失败: {str(e)}')
             # 发生错误时恢复按钮状态
-            if username in self.download_buttons:
-                self.download_buttons[username].set_running(not is_running)
+            if username in self.start_buttons:
+                self.start_buttons[username].set_running(not is_running)
 
-    def update_account_status(self, username, status, color):
+    def start_crawling(self, username):
+        """开始爬取任务"""
+        try:
+            agent = self.agents[username]
+
+            # 如果已有正在运行的线程，先停止
+            if username in self.crawl_workers:
+                self.stop_crawling(username)
+
+            # 创建工作线程和QThread
+            self.crawl_workers[username] = CrawlWorker(username, agent)
+            self.crawl_threads[username] = QThread()
+
+            # 将工作线程移动到新线程
+            self.crawl_workers[username].moveToThread(self.crawl_threads[username])
+
+            # 连接信号槽
+            worker = self.crawl_workers[username]
+            thread = self.crawl_threads[username]
+
+            worker.progress_updated.connect(self.on_progress_updated)
+            worker.status_updated.connect(self.on_status_updated)
+            worker.log_updated.connect(self.on_log_updated)
+            worker.finished.connect(self.on_crawl_finished)
+            worker.error_occurred.connect(self.on_crawl_error)
+
+            # 连接线程开始和结束信号
+            thread.started.connect(worker.run)
+            thread.finished.connect(thread.deleteLater)
+
+            # 启动线程
+            thread.start()
+
+            # 更新界面状态
+            self.status_label.setText(f'{username} 开始爬取...')
+            self.update_account_status(username, '爬取中', '#17a2b8')
+
+            # 标记有任务在运行
+            self.is_running = True
+
+        except Exception as e:
+            error_msg = f'启动爬取任务失败: {str(e)}'
+            QMessageBox.warning(self, '错误', error_msg)
+            if username in self.start_buttons:
+                self.start_buttons[username].set_running(False)
+
+    def stop_crawling(self, username):
+        """停止爬取任务"""
+        try:
+            if username in self.crawl_workers:
+                # 停止工作线程
+                self.crawl_workers[username].stop()
+
+                # 停止QThread
+                if username in self.crawl_threads:
+                    self.crawl_threads[username].quit()
+                    self.crawl_threads[username].wait(5000)  # 等待5秒
+
+                    # 清理资源
+                    del self.crawl_workers[username]
+                    del self.crawl_threads[username]
+
+                # 更新界面状态
+                self.status_label.setText(f'{username} 已停止')
+                self.update_account_status(username, '已停止', '#ffc107')
+
+                # 更新按钮状态
+                if username in self.start_buttons:
+                    self.start_buttons[username].set_running(False)
+
+        except Exception as e:
+            print(f"停止爬取任务时出错: {e}")
+
+    def on_progress_updated(self, username, status, progress):
+        """处理进度更新信号"""
+        # 确保在主线程中更新UI
+        QTimer.singleShot(0, lambda: self.on_status_updated(username=username,
+                                                            status=status,
+                                                            progress=progress))
+
+    def update_progress_bar(self, username, progress):
+        """更新进度条"""
+        for i in range(self.account_list.count()):
+            item = self.account_list.item(i)
+            widget = self.account_list.itemWidget(item)
+
+            if widget and widget.property("username") == username:
+                progress_bar = None
+                for child in widget.findChildren(QProgressBar):
+                    if child.property("username") == username:
+                        progress_bar = child
+                        break
+
+                if progress_bar:
+                    progress_bar.setValue(progress)
+                break
+
+    def on_status_updated(self, username: str, status: str = '', progress: int=0):
+        """处理状态更新信号"""
+        QTimer.singleShot(0, lambda: self.update_account_status(username=username,
+                                                                status=status,
+                                                                color=self.get_status_color(status),
+                                                                progress=progress))
+
+    def get_status_color(self, status):
+        """根据状态获取颜色"""
+        color_map = {
+            '就绪': '#28a745',
+            '爬取中': '#17a2b8',
+            '已停止': '#ffc107',
+            '已完成': '#28a745',
+            '错误': '#dc3545'
+        }
+        return color_map.get(status, '#6c757d')
+
+    def on_log_updated(self, username, log_message):
+        """处理日志更新信号"""
+        QTimer.singleShot(0, lambda: self.update_console_logs(username, log_message))
+
+    def update_console_logs(self, username, log_message):
+        """更新控制台日志"""
+        if username in self.console_windows:
+            self.console_windows[username].update_logs(log_message)
+
+    def on_crawl_finished(self, username):
+        """处理爬取完成信号"""
+        QTimer.singleShot(0, lambda: self.handle_crawl_finished(username))
+
+    def handle_crawl_finished(self, username):
+        """处理爬取完成"""
+        # 清理线程资源
+        self.start_buttons[username].is_finished = True
+        self.start_buttons[username].is_running = False
+        if username in self.crawl_workers:
+            del self.crawl_workers[username]
+        # if username in self.crawl_threads:
+        #     del self.crawl_threads[username]
+
+        # 更新按钮状态
+        if username in self.start_buttons:
+            self.start_buttons[username].set_running(False)
+
+        # 更新状态
+        self.status_label.setText(f'{username} 爬取完成')
+        self.update_account_status(username=username, status='已完成', color='#28a745', progress=100)
+
+        # 检查是否所有任务都完成了
+        # self.check_all_tasks_finished()
+
+    def check_all_tasks_finished(self):
+        """检查是否所有爬取任务都已完成"""
+        if not self.crawl_workers:  # 如果没有正在运行的爬取任务
+            self.is_running = False
+
+    def on_crawl_error(self, username, error_message):
+        """处理爬取错误信号"""
+        QTimer.singleShot(0, lambda: self.handle_crawl_error(username, error_message))
+
+    def handle_crawl_error(self, username, error_message):
+        """处理爬取错误"""
+        # 清理线程资源
+        if username in self.crawl_workers:
+            del self.crawl_workers[username]
+        if username in self.crawl_threads:
+            del self.crawl_threads[username]
+
+        # 更新按钮状态
+        if username in self.start_buttons:
+            self.start_buttons[username].set_running(False)
+
+        # 更新状态
+        self.status_label.setText(f'{username} 爬取出错')
+        self.update_account_status(username, '错误', '#dc3545')
+
+        # 显示错误消息
+        QMessageBox.warning(self, '爬取错误', f'{username} 爬取过程中发生错误:\n{error_message}')
+
+        # 更新控制台日志
+        self.update_console_logs(username, f"[错误] {error_message}")
+
+        # 检查是否所有任务都完成了
+        self.check_all_tasks_finished()
+
+    def update_account_status(self, username, status, color, progress: int=0):
         """更新账号状态标签"""
+        if progress > 0:
+            self.restart_buttons[username].setDisabled(False)
+        if progress == 100:
+            self.start_buttons[username].setDisabled(True)
+
         for i in range(self.account_list.count()):
             item = self.account_list.item(i)
             widget = self.account_list.itemWidget(item)
@@ -1263,7 +1483,7 @@ class MainWindow(QWidget):
                         break
 
                 if status_label:
-                    status_label.setText(f'状态: {status}')
+                    status_label.setText(f'状态: {status}   进度：{progress}%')
                     status_label.setStyleSheet(f"font-size: 12px; color: {color}; font-weight: bold;")
                 break
 
@@ -1319,6 +1539,29 @@ class MainWindow(QWidget):
         except Exception as e:
             QMessageBox.warning(self, '错误', f'启动爬取失败: {str(e)}')
 
+    def clear(self, username):
+        # 确认重启对话框
+        if username in self.crawl_workers and self.crawl_workers[username].is_running:
+            QMessageBox.warning(
+                self,
+                '操作被禁止',
+                f'账号 {username} 正在下载过程中，不可以清除数据！\n请先暂停下载任务。',
+                QMessageBox.Ok
+            )
+            return False
+        reply = QMessageBox.question(
+            self,
+            '确认清除',
+            f'确定要清除下载进度吗？\n此操作将删除所有相关数据且不可恢复。',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            print(f'clear {username}')
+            self.start_buttons[username].is_running = False
+            self.start_buttons[username].is_finished = False
+            self.start_buttons[username].update_style()
+
     def delete_account(self, username):
         """删除账号"""
         # 确认删除对话框
@@ -1329,12 +1572,14 @@ class MainWindow(QWidget):
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
+        if reply == QMessageBox.Yes:
+            print(f'清空用户{username}的下载记录')
 
         if reply == QMessageBox.Yes:
             try:
                 # 停止该账号的下载任务
-                if username in self.download_buttons:
-                    self.download_buttons[username].set_running(False)
+                if username in self.start_buttons:
+                    self.start_buttons[username].set_running(False)
 
                 # 删除cookie文件
                 cookie_file = self.cookie_dir / f'{username}.json'
@@ -1357,8 +1602,8 @@ class MainWindow(QWidget):
                     del self.accounts[username]
                 if username in self.agents:
                     del self.agents[username]
-                if username in self.download_buttons:
-                    del self.download_buttons[username]
+                if username in self.start_buttons:
+                    del self.start_buttons[username]
                 if username in self.delete_buttons:
                     del self.delete_buttons[username]
 
@@ -1392,8 +1637,28 @@ class MainWindow(QWidget):
                 break
 
 
+def excepthook(exctype, value, traceback):
+    """全局异常处理"""
+    print(f"未捕获的异常: {exctype.__name__}: {value}")
+    sys.__excepthook__(exctype, value, traceback)
+
+
+# 在主函数中设置
 if __name__ == '__main__':
+    # 设置全局异常处理
+    sys.excepthook = excepthook
+
     app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec_())
+
+    try:
+        window = MainWindow()
+        window.show()
+
+        # 确保应用程序正确退出
+        result = app.exec_()
+        print(f"应用程序退出，代码: {result}")
+        sys.exit(result)
+
+    except Exception as e:
+        print(f"应用程序启动失败: {e}")
+        sys.exit(1)
