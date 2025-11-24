@@ -476,10 +476,10 @@ class ConsoleWindow(QWidget):
 
         # 状态信息栏
         status_layout = QHBoxLayout()
-        self.status_label = QLabel("状态: 就绪")
+        self.status_label = QLabel("就绪")
         self.status_label.setStyleSheet("color: #28a745; font-weight: bold;")
 
-        self.progress_label = QLabel("进度: 0%")
+        self.progress_label = QLabel("0%")
         self.progress_label.setStyleSheet("color: #007bff;")
 
         status_layout.addWidget(self.status_label)
@@ -545,46 +545,11 @@ class ConsoleWindow(QWidget):
 
         self.setLayout(layout)
 
-        # 启动定时器模拟日志更新（实际使用时替换为真实的日志更新）
-        self.log_timer = QTimer()
-        self.log_timer.timeout.connect(self.simulate_log_update)
-        self.log_timer.start(2000)  # 每2秒更新一次
-
-    def simulate_log_update(self):
-        """模拟日志更新（实际使用时替换为真实的日志更新逻辑）"""
-        import random
-        progress = random.randint(1, 100)
-        log_entry = f"[{curr_milliseconds()}] 处理项目 {progress}/100\n"
-
-        # 添加到日志显示
-        current_text = self.log_display.toPlainText()
-        if len(current_text.split('\n')) > 50:  # 限制日志行数
-            lines = current_text.split('\n')[-40:]
-            current_text = '\n'.join(lines)
-
-        self.log_display.setPlainText(current_text + log_entry)
-
-        # 自动滚动到底部
-        self.log_display.verticalScrollBar().setValue(
-            self.log_display.verticalScrollBar().maximum()
-        )
-
-        # 更新状态
-        self.progress_label.setText(f"进度: {progress}%")
-        if progress < 30:
-            self.status_label.setText("状态: 爬取中")
-            self.status_label.setStyleSheet("color: #17a2b8; font-weight: bold;")
-        elif progress < 80:
-            self.status_label.setText("状态: 处理中")
-            self.status_label.setStyleSheet("color: #ffc107; font-weight: bold;")
-        else:
-            self.status_label.setText("状态: 即将完成")
-            self.status_label.setStyleSheet("color: #28a745; font-weight: bold;")
 
     def clear_logs(self):
         """清空日志"""
         self.log_display.setPlainText(f"{self.username} 的日志已清空\n{'-' * 50}")
-        self.status_label.setText("状态: 就绪")
+        self.status_label.setText("就绪")
         self.status_label.setStyleSheet("color: #6c757d; font-weight: bold;")
         self.progress_label.setText("进度: 0%")
 
@@ -980,7 +945,7 @@ class MainWindow(QWidget):
 
     def add_account(self):
         """添加新账号"""
-        agent = Agent(db)
+        agent = Agent()
         self.login_window = LoginWindow(agent)
         self.login_window.login_success_callback = self.on_login_success
         self.login_window.setWindowModality(Qt.ApplicationModal)
@@ -1005,7 +970,7 @@ class MainWindow(QWidget):
         try:
             self.accounts_data = db.get_all_accounts()
             for (username, password) in self.accounts_data:
-                agent = Agent(db)
+                agent = Agent()
                 agent.login(username)
                 self.agents[username] = agent
                 self.accounts[username] = True
@@ -1048,14 +1013,12 @@ class MainWindow(QWidget):
         account_name.setWordWrap(False)
 
         account_name.setMaximumWidth(180)  # 限制最大宽度
-        # account_name.setElideMode(Qt.ElideRight)  # 文字过长显示省略号
 
-        status_label = QLabel('状态: 就绪')
+        status_label = QLabel('就绪')
         status_label.setStyleSheet("font-size: 12px; color: #28a745; font-weight: bold;")
         status_label.setProperty("username", username)
 
         account_info_layout.addWidget(account_name)
-        # account_info_layout.addStretch()
         account_info_layout.addWidget(status_label)
 
         top_layout.addWidget(account_info_widget)
@@ -1290,7 +1253,7 @@ class MainWindow(QWidget):
                 self.stop_crawling(username)
 
             # 创建工作线程和QThread
-            self.crawl_workers[username] = CrawlWorker(username, agent)
+            self.crawl_workers[username] = CrawlWorker(username=username, agent=agent)
             self.crawl_threads[username] = QThread()
 
             # 将工作线程移动到新线程
@@ -1483,7 +1446,10 @@ class MainWindow(QWidget):
                         break
 
                 if status_label:
-                    status_label.setText(f'状态: {status}   进度：{progress}%')
+                    if progress > 0:
+                        status_label.setText(f'{status} {progress}%')
+                    else:
+                        status_label.setText(f'{status}')
                     status_label.setStyleSheet(f"font-size: 12px; color: {color}; font-weight: bold;")
                 break
 

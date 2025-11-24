@@ -1,4 +1,6 @@
 import json
+from typing import Set
+
 import requests
 from PyQt5.QtCore import QObject, pyqtSignal
 from db_util import AmazonDatabase
@@ -13,9 +15,8 @@ from pathlib import Path
 
 class Agent(QObject):
 
-    def __init__(self, db: AmazonDatabase, cache_dir: str = CACHE_DIR):
+    def __init__(self, cache_dir: str = CACHE_DIR):
         super().__init__()
-        self.db = db
         self.cache_dir = Path(cache_dir)
         self.cookie_dir = self.cache_dir / 'cookies'
         self.url_dir = self.cache_dir / 'urls'
@@ -42,8 +43,6 @@ class Agent(QObject):
         self.session = requests.Session()
         self.online = False
         self.username = None
-        self.total_url = 0
-        self.completed_num = 0
 
     def load_cookies(self, account: str):
         if account is None:
@@ -56,12 +55,6 @@ class Agent(QObject):
         except Exception as e:
             print(f'读取cookie错误[account={account}]: {e}')
             return {}
-
-    def get_progress(self):
-        if self.total_url == 0:
-            return 0
-        else:
-            return (int)(100 * self.completed_num / self.total_url)
 
     def get_captcha(self):
         ts = curr_milliseconds()
@@ -114,61 +107,110 @@ class Agent(QObject):
         resp = self.session.post(url, data=payload, headers=self.headers)
         return resp.text
 
-    def start_craw(self):
-        product_urls = self.get_product_list()
-        self.total_url = len(product_urls)
-        product_uncompleted = agent.db.get_product_uncompleted()
-        session = requests.Session()
-        session.cookies.update(amazon_cookies)
-        self.completed_num = self.total_url - len(product_uncompleted)
-        for product in product_uncompleted:
-            url = product.url
+    def start_craw(self, url: str, session: requests.Session):
+        try:
             start = url.rfind('/')
             end = url.rfind('?')
             if end == -1:
                 asin = url[start + 1:]
             else:
                 asin = url[start + 1:end]
+            product = Product()
             product.asin = asin
             product_payload['asinList'] = asin
             product_payload['asin'] = asin
             product_payload['landingAsin'] = asin
             params = urlencode(product_payload)
             detail_url = f'{PRODUCT_DETAIL_PAGE}?{params}'
-            detail_resp = session.get(detail_url, headers=agent.headers, cookies=amazon_cookies)
+            detail_resp = session.get(detail_url, headers=self.headers, cookies=amazon_cookies)
             detail = json.loads(detail_resp.text)
-            product.price = detail['Value']['content']['twisterSlotJson']['price']
-            main_page = session.get(f'https://www.amazon.com/dp/{asin}?th=1', headers=agent.headers, cookies=amazon_cookies)
+            product.price = float(detail['Value']['content']['twisterSlotJson']['price'])
+            main_page = session.get(f'https://www.amazon.com/dp/{asin}?th=1', headers=self.headers, cookies=amazon_cookies)
             main_soup = BeautifulSoup(main_page.text, 'html.parser')
-            buy_new = main_soup.select_one('#newAccordionCaption_feature_div').text.strip()
-            product.used = 'Buy new' not in buy_new
+            # buy_new = main_soup.select_one('#newAccordionCaption_feature_div').text.strip()
+            # product.used = 'Buy new' not in buy_new
             availability_info = main_soup.select_one('#availability')
             # 缺货
             if availability_info and 'In Stock' in availability_info.text:
                 product.availability = True
-                shipping_info = main_soup.select_one('#sfsb_accordion_head').text.strip()
-                r_index = shipping_info.find('Sold')
-                left = shipping_info[:r_index].strip()
-                right = shipping_info[r_index:].strip()
-                shipping_from = left[left.find(':') + 1:].strip()
-                sold_by = right[right.find(':') + 1:].strip()
-                if shipping_from == 'Amazon' or sold_by == 'Amazon':
+                shipping_info = self.extract_amazon_shipping_info(main_page.text)
+
+                if shipping_info['ships_from'] == 'Amazon' or shipping_info['sold_by'] == 'Amazon':
                     product.shipping_from_amazon = True
                 else:
                     product.shipping_from_amazon = False
                 delivery_info = main_soup.select_one('#mir-layout-DELIVERY_BLOCK').text.strip()
-                shipping_cost = delivery_info[:delivery_info.find('delivery')]
+                shipping_cost = float(delivery_info[:delivery_info.find('delivery')])
                 product.shipping_cost = shipping_cost
             else:
                 product.availability = False
             product.completed = True
-            self.db.upsert_product(product)
-            self.completed_num += 1
+            return product
+        except Exception as e:
+            print(f'解析{url}时发生错误：{e}')
 
-    def get_product_list(self):
+    def extract_amazon_shipping_info(self, html_content):
+        """
+        从亚马逊商品页面提取Ships from和Sold by信息
+        返回字典包含: ships_from, sold_by, seller_link
+        """
+        try:
+            soup = BeautifulSoup(html_content, 'html.parser')
+            result = {'ships_from': None, 'sold_by': None, 'seller_link': None}
+            # 查找所有包含运输和销售信息的div
+            feature_divs = soup.find_all('div', class_='celwidget', attrs={'data-feature-name': True})
+
+            for div in feature_divs:
+                feature_name = div.get('data-feature-name', '')
+
+                # Ships from 信息
+                if feature_name == 'fulfillerInfoFeature_feature_div':
+                    ships_from_span = div.find('span', class_='a-size-small a-color-tertiary', string='Ships from')
+                    if ships_from_span:
+                        # 在同一个feature_div中查找商家名称
+                        name_span = div.find('span', class_='offer-display-feature-text-message')
+                        if name_span:
+                            result['ships_from'] = name_span.get_text(strip=True)
+
+                # Sold by 信息
+                elif feature_name == 'merchantInfoFeature_feature_div':
+                    sold_by_span = div.find('span', class_='a-size-small a-color-tertiary', string='Sold by')
+                    if sold_by_span:
+                        # 查找商家名称和链接
+                        seller_link = div.find('a',
+                                               class_='a-size-small a-link-normal offer-display-feature-text-message')
+                        if seller_link:
+                            result['sold_by'] = seller_link.get_text(strip=True)
+                            result['seller_link'] = seller_link.get('href', '')
+
+            # 备用方法：如果上述方法没找到，尝试直接搜索文本
+            if not result['ships_from']:
+                ships_from_elements = soup.find_all('span', class_='a-size-small a-color-tertiary', string='Ships from')
+                for element in ships_from_elements:
+                    next_text = element.find_next('span', class_='offer-display-feature-text-message')
+                    if next_text:
+                        result['ships_from'] = next_text.get_text(strip=True)
+                        break
+
+            if not result['sold_by']:
+                sold_by_elements = soup.find_all('span', class_='a-size-small a-color-tertiary', string='Sold by')
+                for element in sold_by_elements:
+                    next_link = element.find_next('a',
+                                                  class_='a-size-small a-link-normal offer-display-feature-text-message')
+                    if next_link:
+                        result['sold_by'] = next_link.get_text(strip=True)
+                        result['seller_link'] = next_link.get('href', '')
+                        break
+
+        except Exception as e:
+            print(f"提取运输信息时出错: {e}")
+
+        return result
+
+    def parse_product_list(self, ids: Set[int]):
         if not self.online:
-            return []
-        products = db.get_all_products()
+            return [], 0
+
         page_url = f'{ROOT}/{PRODUCT_PAGE}'
         payload = {
             'pageNo': 1,
@@ -188,8 +230,8 @@ class Agent(QObject):
         page = pages['data']['page']
         total_pages = page['totalPage']
         total_items = page['totalSize']
-        self.total_url = total_items
-        ids = set([p.product_id for p in products])
+
+        products = []
         if len(ids) < total_items:
             for page_no in range(1, total_pages + 1):
                 payload['pageNo'] = page_no
@@ -201,9 +243,8 @@ class Agent(QObject):
                     if product_id in ids:
                         continue
                     product = Product(product_id=product_id, url=item['sourceUrl'])
-                    db.upsert_product(product)
                     products.append(product)
-        return products
+        return products, total_items
 
 
 if __name__ == '__main__':
@@ -212,6 +253,6 @@ if __name__ == '__main__':
     db.init()
     agent = Agent(db)
     agent.login('2b13257592627')
-    agent.start_craw()
+
     agent.db.close()
 
