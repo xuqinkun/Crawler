@@ -183,10 +183,10 @@ class Button(QWidget):
         super().__init__()
         self.icon = icon
         self.is_pressed = False
-        self.initUI()
+        self.init_ui()
         self.callback = lambda: callback(*args, **kwargs)  # 将参数包装到回调函数中
 
-    def initUI(self):
+    def init_ui(self):
         layout = QVBoxLayout()
 
         # 创建按钮
@@ -606,7 +606,7 @@ class MainWindow(QWidget):
 
     def init_ui(self):
         self.setWindowTitle('爬虫管理工具')
-        self.setFixedSize(800, 600)
+        self.setFixedSize(900, 650)
 
         self.setStyleSheet("""
             QWidget {
@@ -627,9 +627,9 @@ class MainWindow(QWidget):
             QPushButton {
                 border: none;
                 border-radius: 6px;
-                padding: 8px 12px;
-                font-size: 14px;
-                font-weight: 500;
+                font-size: 12px;
+                font-weight: bold;
+                min-height: 20px;
             }
             QPushButton:hover {
                 opacity: 0.9;
@@ -639,6 +639,7 @@ class MainWindow(QWidget):
                 border-radius: 4px;
                 text-align: center;
                 background-color: #e9ecef;
+                height: 20px;
             }
             QProgressBar::chunk {
                 background-color: #28a745;
@@ -1001,17 +1002,38 @@ class MainWindow(QWidget):
         top_layout = QHBoxLayout()
 
         # 账号信息
-        account_info = QVBoxLayout()
+        top_layout.setSpacing(10)
+
+        # 账号信息区域 - 设置固定宽度
+        account_info_widget = QWidget()
+        account_info_widget.setFixedWidth(300)  # 固定宽度确保账号名显示完整
+        account_info_layout = QHBoxLayout(account_info_widget)
+        account_info_layout.setContentsMargins(0, 0, 0, 0)
+        account_info_layout.setSpacing(4)
+
         account_name = QLabel(username)
-        account_name.setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50;")
+        account_name.setStyleSheet("""
+                    font-size: 16px; 
+                    font-weight: bold; 
+                    color: #2c3e50;
+                    background-color: transparent;
+                    min-height: 40px;
+                """)
+        account_name.setAlignment(Qt.AlignVCenter)
+        account_name.setWordWrap(False)
+
+        account_name.setMaximumWidth(180)  # 限制最大宽度
+        # account_name.setElideMode(Qt.ElideRight)  # 文字过长显示省略号
 
         status_label = QLabel('状态: 就绪')
-        status_label.setStyleSheet("font-size: 12px; color: #28a745;")
+        status_label.setStyleSheet("font-size: 12px; color: #28a745; font-weight: bold;")
+        status_label.setProperty("username", username)
 
-        account_info.addWidget(account_name)
-        account_info.addWidget(status_label)
+        account_info_layout.addWidget(account_name)
+        # account_info_layout.addStretch()
+        account_info_layout.addWidget(status_label)
 
-        top_layout.addLayout(account_info)
+        top_layout.addWidget(account_info_widget)
         top_layout.addStretch()
 
         # 操作按钮
@@ -1127,7 +1149,7 @@ class MainWindow(QWidget):
 
         # 添加到主布局
         main_layout.addLayout(top_layout)
-        main_layout.addLayout(progress_layout)
+        # main_layout.addLayout(progress_layout)
 
         widget.setLayout(main_layout)
         widget.setProperty("username", username)
