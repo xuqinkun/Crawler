@@ -107,7 +107,7 @@ class Agent(QObject):
         resp = self.session.post(url, data=payload, headers=self.headers)
         return resp.text
 
-    def start_craw(self, url: str, session: requests.Session):
+    def start_craw(self, url: str, session: requests.Session) -> Product:
         start = url.rfind('/')
         end = url.rfind('?')
         if end == -1:

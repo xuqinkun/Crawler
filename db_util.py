@@ -82,14 +82,14 @@ class AmazonDatabase:
             shipping_from_amazon, availability, owner, completed)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(product_id) DO UPDATE SET
-                asin = excluded.asin,
-                url = excluded.url,
-                price = excluded.price,
-                used = excluded.used,
-                shipping_from_amazon = excluded.shipping_from_amazon,
-                availability = excluded.availability,
-                owner = excluded.owner,
-                completed = excluded.completed,
+                asin = COALESCE(excluded.asin, asin),
+                url = COALESCE(excluded.url, url),
+                price = COALESCE(excluded.price, price),
+                used = COALESCE(excluded.used, used),
+                shipping_from_amazon = COALESCE(excluded.shipping_from_amazon, shipping_from_amazon),
+                availability = COALESCE(excluded.availability, availability),
+                owner = COALESCE(excluded.owner, owner),
+                completed = COALESCE(excluded.completed, completed),
                 updated_at = CURRENT_TIMESTAMP
                 ''', (
                 product.product_id,
@@ -297,6 +297,7 @@ class AmazonDatabase:
             self.cursor.execute('''
                 DELETE FROM account WHERE username = ?
             ''', (username,))
+            print(f"删除账户{username}成功!")
             self.conn.commit()
             return True
         except sqlite3.Error as e:
