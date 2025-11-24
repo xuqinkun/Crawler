@@ -31,6 +31,7 @@ def build_optimized():
         '--hidden-import=sqlite3',
         '--hidden-import=ssl',
         '--hidden-import=cryptography',
+        '--hidden-import=pycryptodome',
         '--hidden-import=OpenSSL',
         '--hidden-import=bs4',
         '--hidden-import=hashlib',
