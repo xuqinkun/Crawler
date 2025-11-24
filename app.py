@@ -1453,7 +1453,7 @@ class MainWindow(QWidget):
                 if product.completed:
                     product_dict = {
                         '序号': n + 1,
-                        '产品ID': product.product_id,
+                        '产品ID': str(product.product_id),
                         'asin': product.asin,
                         '链接': product.url,
                         '有无库存': '有' if product.availability else '无',
