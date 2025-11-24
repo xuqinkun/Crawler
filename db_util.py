@@ -49,7 +49,7 @@ class AmazonDatabase:
                     used INTEGER DEFAULT 0,
                     availability INTEGER DEFAULT 0,                                        
                     completed INTEGER DEFAULT 0,
-                    shipping_from_amazon INTEGER DEFAULT -1,
+                    shipping_from_amazon TEXT,
                     create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     owner TEXT,
@@ -79,8 +79,8 @@ class AmazonDatabase:
             self.cursor.execute('''
             INSERT INTO product 
             (product_id, asin, url, price, used,
-            shipping_from_amazon, availability, completed)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            shipping_from_amazon, availability, owner, completed)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(product_id) DO UPDATE SET
                 asin = excluded.asin,
                 url = excluded.url,
@@ -88,6 +88,7 @@ class AmazonDatabase:
                 used = excluded.used,
                 shipping_from_amazon = excluded.shipping_from_amazon,
                 availability = excluded.availability,
+                owner = excluded.owner,
                 completed = excluded.completed,
                 updated_at = CURRENT_TIMESTAMP
                 ''', (
@@ -98,6 +99,7 @@ class AmazonDatabase:
                 product.used,
                 product.shipping_from_amazon,
                 product.availability,
+                product.owner,
                 product.completed
             ))
             self.conn.commit()
@@ -277,11 +279,23 @@ class AmazonDatabase:
             self.conn.close()
             print("数据库连接已关闭")
 
+    def delete_product_by_owner(self, username):
+        """删除账户"""
+        try:
+            self.cursor.execute('''
+                DELETE FROM product WHERE owner = ?
+            ''', (username,))
+            self.conn.commit()
+            return True
+        except sqlite3.Error as e:
+            print(f"删除账户错误: {e}")
+            return  False
+
     def delete_account(self, username):
         """删除账户"""
         try:
             self.cursor.execute('''
-                DELETE FROM accounts WHERE username = ?
+                DELETE FROM account WHERE username = ?
             ''', (username,))
             self.conn.commit()
             return True

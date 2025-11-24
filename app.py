@@ -500,7 +500,7 @@ class ConsoleWindow(QWidget):
             }
         """)
         self.log_display.setReadOnly(True)
-        self.log_display.setPlainText(f"{self.username} 的控制台已启动...\n等待日志输出...")
+        self.log_display.setPlainText(f"{self.username} 的控制台已启动...\n")
 
         # 控制按钮
         button_layout = QHBoxLayout()
@@ -545,13 +545,11 @@ class ConsoleWindow(QWidget):
 
         self.setLayout(layout)
 
-
     def clear_logs(self):
         """清空日志"""
         self.log_display.setPlainText(f"{self.username} 的日志已清空\n{'-' * 50}")
         self.status_label.setText("就绪")
         self.status_label.setStyleSheet("color: #6c757d; font-weight: bold;")
-        self.progress_label.setText("进度: 0%")
 
     def update_logs(self, log_text):
         """更新日志内容（供外部调用）"""
@@ -565,7 +563,6 @@ class ConsoleWindow(QWidget):
 
     def closeEvent(self, event):
         """关闭事件处理"""
-        self.log_timer.stop()
         super().closeEvent(event)
 
 
@@ -586,6 +583,7 @@ class MainWindow(QWidget):
         self.agents = {}
         self.account_list = {}
         self.start_buttons = {}
+        self.delete_buttons = {}
         self.restart_buttons = {}
         self.export_path = user_home / 'Documents' / 'amazon'  # 全局导出目录
         ensure_dir_exists(self.export_path)
@@ -1064,6 +1062,7 @@ class MainWindow(QWidget):
 
         # 删除按钮
         delete_btn = QPushButton('删除')
+        self.delete_buttons[username] = delete_btn
         delete_btn.setFixedSize(60, 32)
         delete_btn.setStyleSheet("""
             QPushButton {
@@ -1147,80 +1146,24 @@ class MainWindow(QWidget):
         self.account_list.addItem(item)
         self.account_list.setItemWidget(item, widget)
 
-    def simulate_progress_update(self, username):
-        """模拟进度更新（实际使用时替换为真实的进度回调）"""
-        if username not in self.start_buttons:
-            return
-
-        # 只有运行状态才更新进度
-        if not self.start_buttons[username].is_running:
-            return
-
-        # 模拟进度递增
-        def update_progress(progress):
-            if username not in self.start_buttons:
-                return
-
-            if not self.start_buttons[username].is_running:
-                return
-
-            # 更新进度条
-            for i in range(self.account_list.count()):
-                item = self.account_list.item(i)
-                widget = self.account_list.itemWidget(item)
-
-                if widget and widget.property("username") == username:
-                    progress_bar = None
-                    for child in widget.findChildren(QProgressBar):
-                        if child.property("username") == username:
-                            progress_bar = child
-                            break
-
-                    if progress_bar:
-                        progress_bar.setValue(progress)
-
-                    break
-
-            # 继续模拟进度
-            if progress < 100 and self.start_buttons[username].is_running:
-                QTimer.singleShot(100, lambda: update_progress(progress + 1))
-            elif progress >= 100:
-                # 完成时自动停止
-                self.start_buttons[username].set_running(False)
-                self.update_account_status(username, '已完成', '#28a745')
-                self.status_label.setText(f'{username} 爬取完成')
-
-                if username in self.console_windows:
-                    self.console_windows[username].update_logs(f"[完成] {username} 爬取任务已完成")
-
-        # 开始模拟进度
-        QTimer.singleShot(500, lambda: update_progress(0))
-
     def on_start_toggle(self, username, is_running):
         """启动按钮状态切换回调"""
         try:
             agent = self.agents[username]
             if is_running:
                 # 开始爬取
-                self.start_crawling(username)
                 self.status_label.setText(f'{username} 开始爬取...')
-
                 # 更新状态标签
                 self.update_account_status(username, '爬取中', '#17a2b8')
+
+                self.start_worker(username)
 
                 # 更新控制台日志
                 if username in self.console_windows:
                     self.console_windows[username].update_logs(f"[开始爬取] {username} 开始执行爬取任务")
-
-                # 这里调用实际的开始下载逻辑
-                # agent.start_download()
-
-                # 模拟进度更新（实际使用时替换为真实的进度回调）
-                self.simulate_progress_update(username)
-
             else:
                 # 暂停爬取
-                self.stop_crawling(username)
+                self.pause_worker(username)
                 self.status_label.setText(f'{username} 已暂停')
 
                 # 更新状态标签
@@ -1243,14 +1186,14 @@ class MainWindow(QWidget):
             if username in self.start_buttons:
                 self.start_buttons[username].set_running(not is_running)
 
-    def start_crawling(self, username):
+    def start_worker(self, username):
         """开始爬取任务"""
         try:
             agent = self.agents[username]
 
             # 如果已有正在运行的线程，先停止
             if username in self.crawl_workers:
-                self.stop_crawling(username)
+                self.pause_worker(username)
 
             # 创建工作线程和QThread
             self.crawl_workers[username] = CrawlWorker(username=username, agent=agent)
@@ -1289,7 +1232,7 @@ class MainWindow(QWidget):
             if username in self.start_buttons:
                 self.start_buttons[username].set_running(False)
 
-    def stop_crawling(self, username):
+    def pause_worker(self, username):
         """停止爬取任务"""
         try:
             if username in self.crawl_workers:
@@ -1340,7 +1283,7 @@ class MainWindow(QWidget):
                     progress_bar.setValue(progress)
                 break
 
-    def on_status_updated(self, username: str, status: str = '', progress: int=0):
+    def on_status_updated(self, username: str, status: str = '', progress: float=0):
         """处理状态更新信号"""
         QTimer.singleShot(0, lambda: self.update_account_status(username=username,
                                                                 status=status,
@@ -1426,11 +1369,11 @@ class MainWindow(QWidget):
         # 检查是否所有任务都完成了
         self.check_all_tasks_finished()
 
-    def update_account_status(self, username, status, color, progress: int=0):
+    def update_account_status(self, username, status, color, progress: float=0):
         """更新账号状态标签"""
         if progress > 0:
             self.restart_buttons[username].setDisabled(False)
-        if progress == 100:
+        if progress == 100.0:
             self.start_buttons[username].setDisabled(True)
 
         for i in range(self.account_list.count()):
@@ -1447,7 +1390,7 @@ class MainWindow(QWidget):
 
                 if status_label:
                     if progress > 0:
-                        status_label.setText(f'{status} {progress}%')
+                        status_label.setText(f'{status} {progress:.2f}%')
                     else:
                         status_label.setText(f'{status}')
                     status_label.setStyleSheet(f"font-size: 12px; color: {color}; font-weight: bold;")
@@ -1577,8 +1520,7 @@ class MainWindow(QWidget):
                 self.remove_account_item(username)
 
                 self.status_label.setText(f'账号 {username} 已删除')
-                QMessageBox.information(self, '删除成功', f'账号 {username} 已成功删除')
-
+                self.load_accounts()
             except Exception as e:
                 error_msg = f'删除账号时发生错误: {str(e)}'
                 QMessageBox.warning(self, '删除失败', error_msg)

@@ -108,46 +108,49 @@ class Agent(QObject):
         return resp.text
 
     def start_craw(self, url: str, session: requests.Session):
-        try:
-            start = url.rfind('/')
-            end = url.rfind('?')
-            if end == -1:
-                asin = url[start + 1:]
-            else:
-                asin = url[start + 1:end]
-            product = Product()
-            product.asin = asin
-            product_payload['asinList'] = asin
-            product_payload['asin'] = asin
-            product_payload['landingAsin'] = asin
-            params = urlencode(product_payload)
-            detail_url = f'{PRODUCT_DETAIL_PAGE}?{params}'
-            detail_resp = session.get(detail_url, headers=self.headers, cookies=amazon_cookies)
-            detail = json.loads(detail_resp.text)
-            product.price = float(detail['Value']['content']['twisterSlotJson']['price'])
-            main_page = session.get(f'https://www.amazon.com/dp/{asin}?th=1', headers=self.headers, cookies=amazon_cookies)
-            main_soup = BeautifulSoup(main_page.text, 'html.parser')
-            # buy_new = main_soup.select_one('#newAccordionCaption_feature_div').text.strip()
-            # product.used = 'Buy new' not in buy_new
-            availability_info = main_soup.select_one('#availability')
-            # 缺货
-            if availability_info and 'In Stock' in availability_info.text:
-                product.availability = True
-                shipping_info = self.extract_amazon_shipping_info(main_page.text)
-
-                if shipping_info['ships_from'] == 'Amazon' or shipping_info['sold_by'] == 'Amazon':
-                    product.shipping_from_amazon = True
-                else:
-                    product.shipping_from_amazon = False
-                delivery_info = main_soup.select_one('#mir-layout-DELIVERY_BLOCK').text.strip()
-                shipping_cost = float(delivery_info[:delivery_info.find('delivery')])
-                product.shipping_cost = shipping_cost
-            else:
-                product.availability = False
-            product.completed = True
+        start = url.rfind('/')
+        end = url.rfind('?')
+        if end == -1:
+            asin = url[start + 1:]
+        else:
+            asin = url[start + 1:end]
+        product = Product()
+        product.asin = asin
+        product_payload['asinList'] = asin
+        product_payload['asin'] = asin
+        product_payload['landingAsin'] = asin
+        params = urlencode(product_payload)
+        detail_url = f'{PRODUCT_DETAIL_PAGE}?{params}'
+        detail_resp = session.get(detail_url, headers=self.headers, cookies=amazon_cookies)
+        detail = json.loads(detail_resp.text)
+        data = detail['Value']['content']['twisterSlotJson']
+        if 'price' in data:
+            product.price = float(data['price'])
+        else:
+            print(f'{url} 无法获取价格')
+            product.availability =  False
+            product.completed =  True
             return product
-        except Exception as e:
-            print(f'解析{url}时发生错误：{e}')
+        main_page = session.get(f'https://www.amazon.com/dp/{asin}?th=1', headers=self.headers, cookies=amazon_cookies)
+        main_soup = BeautifulSoup(main_page.text, 'html.parser')
+        # buy_new = main_soup.select_one('#newAccordionCaption_feature_div').text.strip()
+        # product.used = 'Buy new' not in buy_new
+        availability_info = main_soup.select_one('#availability')
+        # 缺货
+        if availability_info and 'In Stock' in availability_info.text:
+            product.availability = True
+            shipping_info = self.extract_amazon_shipping_info(main_page.text)
+
+            if shipping_info['ships_from'] == 'Amazon' or shipping_info['sold_by'] == 'Amazon':
+                product.shipping_from_amazon = True
+            else:
+                product.shipping_from_amazon = False
+            delivery_info = main_soup.select_one('#mir-layout-DELIVERY_BLOCK').text.strip()
+            product.shipping_cost = delivery_info[:delivery_info.find('delivery')]
+        else:
+            product.availability = False
+        product.completed = True
+        return product
 
     def extract_amazon_shipping_info(self, html_content):
         """
