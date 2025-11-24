@@ -50,6 +50,7 @@ class AmazonDatabase:
                     availability INTEGER DEFAULT 0,                                        
                     completed INTEGER DEFAULT 0,
                     shipping_from_amazon TEXT,
+                    shipping_cost TEXT,
                     create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     owner TEXT,
@@ -79,14 +80,15 @@ class AmazonDatabase:
             self.cursor.execute('''
             INSERT INTO product 
             (product_id, asin, url, price, used,
-            shipping_from_amazon, availability, owner, completed)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            shipping_from_amazon, shipping_cost, availability, owner, completed)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,?)
             ON CONFLICT(product_id) DO UPDATE SET
                 asin = COALESCE(excluded.asin, asin),
                 url = COALESCE(excluded.url, url),
                 price = COALESCE(excluded.price, price),
                 used = COALESCE(excluded.used, used),
                 shipping_from_amazon = COALESCE(excluded.shipping_from_amazon, shipping_from_amazon),
+                shipping_cost = COALESCE(excluded.shipping_cost, shipping_cost),
                 availability = COALESCE(excluded.availability, availability),
                 owner = COALESCE(excluded.owner, owner),
                 completed = COALESCE(excluded.completed, completed),
@@ -98,6 +100,7 @@ class AmazonDatabase:
                 product.price,
                 product.used,
                 product.shipping_from_amazon,
+                product.shipping_cost,
                 product.availability,
                 product.owner,
                 product.completed
@@ -217,6 +220,7 @@ class AmazonDatabase:
                     price=row['price'],
                     availability=row['availability'],
                     completed=bool(row['completed']),
+                    shipping_cost=row['shipping_cost'],
                     shipping_from_amazon=bool(row['shipping_from_amazon']),
                 )
                 products.append(product)
