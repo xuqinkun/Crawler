@@ -29,9 +29,12 @@ def build_optimized():
         '--hidden-import=PyQt5.QtWidgets',
         '--hidden-import=requests',
         '--hidden-import=sqlite3',
+        '--hidden-import=ssl',
         '--hidden-import=cryptography',
         '--hidden-import=OpenSSL',
         '--hidden-import=bs4',
+        '--hidden-import=hashlib',
+        '--hidden-import=hmac',
         '--hidden-import=urllib',  # 明确添加urllib3
         '--hidden-import=urllib3',  # 明确添加urllib3
         '--hidden-import=email',  # 明确添加email模块
