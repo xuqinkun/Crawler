@@ -1,6 +1,7 @@
 import sqlite3
 from datetime import datetime
 from pathlib import Path
+from typing import List
 
 from product import Product
 from util import ensure_dir_exists
@@ -17,6 +18,7 @@ class AmazonDatabase:
         """连接数据库"""
         try:
             self.conn = sqlite3.connect(self.db_name)
+            self.conn.row_factory = sqlite3.Row
             self.cursor = self.conn.cursor()
             print(f"成功连接到数据库: {self.db_name}")
         except sqlite3.Error as e:
@@ -38,7 +40,7 @@ class AmazonDatabase:
                 CREATE TABLE IF NOT EXISTS product (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     product_id TEXT UNIQUE NOT NULL,
-                    asin TEXT UNIQUE NOT NULL,
+                    asin TEXT,
                     title TEXT,
                     price REAL DEFAULT -1,
                     black_list INTEGER DEFAULT -1,
@@ -71,15 +73,24 @@ class AmazonDatabase:
         except sqlite3.Error as e:
             print(f"删除表错误: {e}")
 
-    def insert_product(self, product: Product):
+    def upsert_product(self, product: Product):
         """插入或更新商品信息"""
         try:
             self.cursor.execute('''
-                INSERT OR REPLACE INTO product 
-                (product_id, asin, url, price, used,
-                shipping_from_amazon, availability, completed)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (
+            INSERT INTO product 
+            (product_id, asin, url, price, used,
+            shipping_from_amazon, availability, completed)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(product_id) DO UPDATE SET
+                asin = excluded.asin,
+                url = excluded.url,
+                price = excluded.price,
+                used = excluded.used,
+                shipping_from_amazon = excluded.shipping_from_amazon,
+                availability = excluded.availability,
+                completed = excluded.completed,
+                updated_at = CURRENT_TIMESTAMP
+                ''', (
                 product.product_id,
                 product.asin,
                 product.url,
@@ -90,7 +101,6 @@ class AmazonDatabase:
                 product.completed
             ))
             self.conn.commit()
-            print(f"商品 {product.asin} 保存成功")
             return True
 
         except sqlite3.Error as e:
@@ -176,19 +186,41 @@ class AmazonDatabase:
                 SELECT id, product_id, url FROM product
                 where completed = 0;
             ''')
-            return self.cursor.fetchall()
+            rows = self.cursor.fetchall()
+            products = []
+            for row in rows:
+                product = Product(
+                    product_id=row['product_id'],
+                    url=row['url'],
+                )
+                products.append(product)
+            return products
         except sqlite3.Error as e:
             print(f"获取爬取状态错误: {e}")
 
-    def get_product_detail(self):
+    def get_all_products(self) -> List[Product]:
         """获取爬取状态"""
         try:
             self.cursor.execute('''
                 SELECT * FROM product
             ''')
-            return self.cursor.fetchall()
+            rows = self.cursor.fetchall()
+            products = []
+            for row in rows:
+                product = Product(
+                    product_id=row['product_id'],
+                    asin=row['asin'],
+                    url=row['url'],
+                    price=row['price'],
+                    availability=row['availability'],
+                    completed=bool(row['completed']),
+                    shipping_from_amazon=bool(row['shipping_from_amazon']),
+                )
+                products.append(product)
+            return products
         except sqlite3.Error as e:
             print(f"获取爬取状态错误: {e}")
+            return []
 
     def get_product_by_id(self, product_id):
         """根据ASIN获取商品信息"""

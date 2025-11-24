@@ -43,7 +43,7 @@ class Agent(QObject):
         self.online = False
         self.username = None
         self.total_url = 0
-        self.completed_url = 0
+        self.completed_num = 0
 
     def load_cookies(self, account: str):
         if account is None:
@@ -61,7 +61,7 @@ class Agent(QObject):
         if self.total_url == 0:
             return 0
         else:
-            return (int)(100 * self.completed_url / self.total_url)
+            return (int)(100 * self.completed_num / self.total_url)
 
     def get_captcha(self):
         ts = curr_milliseconds()
@@ -114,21 +114,61 @@ class Agent(QObject):
         resp = self.session.post(url, data=payload, headers=self.headers)
         return resp.text
 
-    def download(self):
-        product_mapping = self.get_product_list()
-        pass
+    def start_craw(self):
+        product_urls = self.get_product_list()
+        self.total_url = len(product_urls)
+        product_uncompleted = agent.db.get_product_uncompleted()
+        session = requests.Session()
+        session.cookies.update(amazon_cookies)
+        self.completed_num = self.total_url - len(product_uncompleted)
+        for product in product_uncompleted:
+            url = product.url
+            start = url.rfind('/')
+            end = url.rfind('?')
+            if end == -1:
+                asin = url[start + 1:]
+            else:
+                asin = url[start + 1:end]
+            product.asin = asin
+            product_payload['asinList'] = asin
+            product_payload['asin'] = asin
+            product_payload['landingAsin'] = asin
+            params = urlencode(product_payload)
+            detail_url = f'{PRODUCT_DETAIL_PAGE}?{params}'
+            detail_resp = session.get(detail_url, headers=agent.headers, cookies=amazon_cookies)
+            detail = json.loads(detail_resp.text)
+            product.price = detail['Value']['content']['twisterSlotJson']['price']
+            main_page = session.get(f'https://www.amazon.com/dp/{asin}?th=1', headers=agent.headers, cookies=amazon_cookies)
+            main_soup = BeautifulSoup(main_page.text, 'html.parser')
+            buy_new = main_soup.select_one('#newAccordionCaption_feature_div').text.strip()
+            product.used = 'Buy new' not in buy_new
+            availability_info = main_soup.select_one('#availability')
+            # 缺货
+            if availability_info and 'In Stock' in availability_info.text:
+                product.availability = True
+                shipping_info = main_soup.select_one('#sfsb_accordion_head').text.strip()
+                r_index = shipping_info.find('Sold')
+                left = shipping_info[:r_index].strip()
+                right = shipping_info[r_index:].strip()
+                shipping_from = left[left.find(':') + 1:].strip()
+                sold_by = right[right.find(':') + 1:].strip()
+                if shipping_from == 'Amazon' or sold_by == 'Amazon':
+                    product.shipping_from_amazon = True
+                else:
+                    product.shipping_from_amazon = False
+                delivery_info = main_soup.select_one('#mir-layout-DELIVERY_BLOCK').text.strip()
+                shipping_cost = delivery_info[:delivery_info.find('delivery')]
+                product.shipping_cost = shipping_cost
+            else:
+                product.availability = False
+            product.completed = True
+            self.db.upsert_product(product)
+            self.completed_num += 1
 
     def get_product_list(self):
         if not self.online:
             return []
-        url_save_path = self.url_dir / f'{self.username}.json'
-        if url_save_path.exists():
-            try:
-                with url_save_path.open('r', encoding=DEFAULT_ENCODING) as f:
-                    product_mapping = json.load(f)
-                return product_mapping
-            except Exception as e:
-                print(f'读取URL错误[account={self.username}]: {e}')
+        products = db.get_all_products()
         page_url = f'{ROOT}/{PRODUCT_PAGE}'
         payload = {
             'pageNo': 1,
@@ -148,82 +188,30 @@ class Agent(QObject):
         page = pages['data']['page']
         total_pages = page['totalPage']
         total_items = page['totalSize']
-        product_mapping = {}
-        for page_no in range(1, total_pages + 1):
-            payload['pageNo'] = page_no
-            response = self.post(page_url, payload)
-            pages = json.loads(response)
-            page = pages['data']['page']
-            for item in page['list']:
-                id = item['id']
-                product_mapping[id] = item['sourceUrl']
-        with url_save_path.open('w', encoding=DEFAULT_ENCODING) as f:
-            json.dump(product_mapping, f)
-        return product_mapping
+        self.total_url = total_items
+        ids = set([p.product_id for p in products])
+        if len(ids) < total_items:
+            for page_no in range(1, total_pages + 1):
+                payload['pageNo'] = page_no
+                response = self.post(page_url, payload)
+                pages = json.loads(response)
+                page = pages['data']['page']
+                for item in page['list']:
+                    product_id = item['id']
+                    if product_id in ids:
+                        continue
+                    product = Product(product_id=product_id, url=item['sourceUrl'])
+                    db.upsert_product(product)
+                    products.append(product)
+        return products
 
 
 if __name__ == '__main__':
     db = AmazonDatabase()
+    db.connect()
+    db.init()
     agent = Agent(db)
     agent.login('2b13257592627')
-    product_urls = agent.get_product_list()
-    session = requests.Session()
-    product_uncompleted = agent.db.get_product_uncompleted()
-    session.cookies.update(amazon_cookies)
-    for id, product in product_urls.items():
-        url = product['url']
-        product_save = Product(id, url)
-        resp = session.get(url, headers=agent.headers, cookies=amazon_cookies)
-        start = url.rfind('/')
-        end = url.rfind('?')
-        if end == -1:
-            asin = url[start + 1:]
-        else:
-            asin = url[start + 1:end]
-        product_payload['asinList'] = asin
-        product_payload['asin'] = asin
-        product_payload['landingAsin'] = asin
-        params = urlencode(product_payload)
-        detail_url = f'{PRODUCT_DETAIL_PAGE}?{params}'
-        resp = session.get(detail_url, headers=agent.headers)
-
-        main_page = session.get(f'https://www.amazon.com/dp/{asin}?th=1', headers=agent.headers)
-        soup = BeautifulSoup(main_page.text, 'html.parser')
-        no_availability_info = soup.select_one('p.a-text-bold')
-        availability = False
-        # 缺货
-        if no_availability_info and 'No featured offers available' in no_availability_info.text:
-            product_save.completed = True
-        else:
-            availability = soup.select_one('#availability')
-            shipping_info = soup.select_one('#sfsb_accordion_head').text.strip()
-            r_index = shipping_info.find('Sold')
-            left = shipping_info[:r_index].strip()
-            right = shipping_info[r_index:].strip()
-            shipping_from = left[left.find(':') + 1:].strip()
-            sold_by = right[right.find(':') + 1:].strip()
-            shipping_from_amazon = False
-            if shipping_from == 'Amazon' or sold_by == 'Amazon':
-                shipping_from_amazon = True
-            delivery_info = soup.select_one('#mir-layout-DELIVERY_BLOCK').text.strip()
-            shipping_cost = delivery_info[:delivery_info.find('delivery')]
-            content = json.loads(resp.text)['Value']['content']
-            info = content['twisterSlotJson']
-            div = content['twisterSlotDiv']
-            soup = BeautifulSoup(div, 'html.parser')
-            soup.select('#twisterAvailability')
-            stock_info = soup.select_one('#twisterAvailability')
-            if availability and 'In Stock' in availability.text.strip():
-                availability = True
-            elif 'isAvailable' in info and info['isAvailable']:
-                availability = True
-            elif stock_info:
-                available_text = stock_info.text.strip()
-                if 'In Stock' in available_text:
-                    availability = True
-            else:
-                availability = False
-        product_save.availability = availability
-        agent.db.insert_product(product_save)
+    agent.start_craw()
     agent.db.close()
 

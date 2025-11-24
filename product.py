@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import time
 
 
 @dataclass
@@ -12,7 +13,10 @@ class Product():
     url: str = ''
     used: bool = None
     price: float = None
+    shipping_cost: float = None
     black_list: bool = False
     shipping_from_amazon: bool = None
     availability: bool = False
     completed: bool = False
+    created_at: time = None
+    updated_at: time = None
