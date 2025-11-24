@@ -76,7 +76,7 @@ class CrawlWorker(QObject):
         if not self.is_running:
             return
 
-        all_saved_products = db.get_all_products()
+        all_saved_products = db.get_all_products(self.username)
         ids = set([p.product_id for p in all_saved_products])
         new_products, total_items = self.agent.parse_product_list(ids=ids)
 

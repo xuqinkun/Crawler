@@ -3,6 +3,8 @@ import os
 import platform
 import subprocess
 import sys
+from datetime import datetime
+import pandas as pd
 import requests
 
 from PyQt5.QtCore import Qt, QByteArray, QTimer, QSize, QThread
@@ -1429,20 +1431,55 @@ class MainWindow(QWidget):
         new_y = main_geometry.y() + 50
         console_window.move(new_x, new_y)
 
-    def export_data(self, username):
-        """导出账号数据"""
+    def export_data(self, username, filename=None):
+        """将用户的产品数据导出到CSV文件"""
         try:
-            # 这里调用实际的导出逻辑
-            export_file = self.export_path / f'{username}_data_{curr_milliseconds()}.json'
+            # 获取产品数据
+            products = db.get_all_products(username)
 
-            QMessageBox.information(
-                self,
-                '导出成功',
-                f'{username} 的数据已导出到:\n{export_file}'
-            )
-            self.status_label.setText(f'{username} 数据导出完成')
+            if not products:
+                print(f"用户 {username} 没有产品数据")
+                return False
+
+            # 如果没有指定文件名，生成默认文件名
+            if filename is None:
+                timestamp = datetime.now().strftime("%Y年%m月%d日_%H时%M分%S秒")
+                filename = self.export_path/username / f"products_{timestamp}.csv"
+                ensure_dir_exists(filename.parent)
+
+            # 将产品对象转换为字典列表
+            products_data = []
+            for n, product in enumerate(products):
+                if product.completed:
+                    product_dict = {
+                        '序号': n + 1,
+                        '产品ID': product.product_id,
+                        'asin': product.asin,
+                        '链接': product.url,
+                        '有无库存': '有' if product.availability else '无',
+                        '价格': 'N/A',
+                        '运费': 'N/A',
+                        '是否二手': 'N/A',
+                        '从亚马逊发货': 'N/A',
+                    }
+                    if product.availability:
+                        product_dict['价格'] = product.price
+                        product_dict['运费'] = product.shipping_cost
+                        product_dict['是否二手'] = '是' if product.used else '否'
+                        product_dict['从亚马逊发货'] = '是' if product.shipping_from_amazon else '否'
+                    products_data.append(product_dict)
+
+            # 创建DataFrame并导出到CSV
+            df = pd.DataFrame(products_data)
+            df.to_csv(filename, index=False, encoding='utf-8-sig')
+
+            print(f"成功导出 {len(products)} 条产品数据到 {filename}")
+            self.status_label.setText(f"成功导出 {len(products)} 条产品数据到 {filename}")
+            return True
+
         except Exception as e:
-            QMessageBox.warning(self, '导出失败', f'导出数据时发生错误: {str(e)}')
+            print(f"导出CSV失败: {e}")
+            return False
 
     def clear(self, username):
         # 确认重启对话框

@@ -200,12 +200,13 @@ class AmazonDatabase:
         except sqlite3.Error as e:
             print(f"获取爬取状态错误: {e}")
 
-    def get_all_products(self) -> List[Product]:
+    def get_all_products(self, owner: str) -> List[Product]:
         """获取爬取状态"""
         try:
             self.cursor.execute('''
                 SELECT * FROM product
-            ''')
+                where owner = ?
+            ''', (owner,))
             rows = self.cursor.fetchall()
             products = []
             for row in rows:
