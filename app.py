@@ -1,5 +1,7 @@
 import json
 import os
+import platform
+import subprocess
 import sys
 import requests
 
@@ -517,8 +519,8 @@ class MainWindow(QWidget):
         self.console_windows = {}  # 存储控制台窗口
         self.agents = {}
         self.account_list = {}
-        self.export_path = user_home / 'Downloads'  # 全局导出目录
-
+        self.export_path = user_home / 'Documents' / 'amazon'  # 全局导出目录
+        ensure_dir_exists(self.export_path)
         self.init_ui()
         self.load_accounts()
         # 加载保存的导出路径
@@ -612,9 +614,25 @@ class MainWindow(QWidget):
         """)
         change_export_btn.clicked.connect(self.change_export_path)
 
+        # 浏览目录按钮
+        browse_export_btn = QPushButton('浏览')
+        browse_export_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #17a2b8;
+                        color: white;
+                        padding: 6px 12px;
+                    }
+                    QPushButton:hover {
+                        background-color: #138496;
+                    }
+                """)
+        browse_export_btn.clicked.connect(self.browse_export_path)
+        browse_export_btn.setToolTip("在文件管理器中打开导出目录")
+
         export_section.addWidget(export_label)
         export_section.addWidget(self.export_path_label)
         export_section.addWidget(change_export_btn)
+        export_section.addWidget(browse_export_btn)
         export_section.addStretch()
 
         header_layout.addWidget(title_label)
@@ -683,6 +701,36 @@ class MainWindow(QWidget):
 
         # 更新导出路径显示
         self.update_export_path_display()
+
+    def browse_export_path(self):
+        """在文件管理器中打开导出目录"""
+        try:
+            # 确保目录存在
+            if not self.export_path.exists():
+                self.export_path.mkdir(parents=True, exist_ok=True)
+                self.status_label.setText(f"已创建导出目录: {self.export_path}")
+
+            # 根据不同操作系统打开文件管理器
+            system = platform.system()
+
+            if system == "Windows":
+                # Windows
+                os.startfile(str(self.export_path))
+            elif system == "Darwin":
+                # macOS
+                subprocess.run(["open", str(self.export_path)])
+            else:
+                # Linux 和其他类Unix系统
+                subprocess.run(["xdg-open", str(self.export_path)])
+
+            self.status_label.setText(f"已打开导出目录: {self.export_path}")
+            print(f"打开导出目录: {self.export_path}")
+
+        except Exception as e:
+            error_msg = f"无法打开导出目录: {str(e)}"
+            QMessageBox.warning(self, "打开目录失败", error_msg)
+            self.status_label.setText("打开目录失败")
+            print(f"打开目录错误: {e}")
 
     def closeEvent(self, event):
         """重写关闭事件，确保资源正确释放"""
@@ -893,7 +941,7 @@ class MainWindow(QWidget):
         button_layout.setSpacing(5)
 
         # 控制台按钮
-        console_btn = QPushButton('控制台')
+        console_btn = QPushButton('日志')
         console_btn.setStyleSheet("""
             QPushButton {
                 background-color: #17a2b8;
@@ -908,7 +956,7 @@ class MainWindow(QWidget):
         console_btn.clicked.connect(lambda: self.show_console(username))
 
         # 导出按钮
-        export_btn = QPushButton('导出数据')
+        export_btn = QPushButton('导出')
         export_btn.setStyleSheet("""
             QPushButton {
                 background-color: #ffc107;
