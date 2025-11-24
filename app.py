@@ -54,6 +54,83 @@ class ClickableLabel(QLabel):
         QToolTip.showText(pos, "点击刷新验证码", self)
 
 
+class DownloadButton(QPushButton):
+    """自定义下载按钮，支持开始/暂停状态切换"""
+
+    def __init__(self, username, callback, parent=None):
+        super().__init__(parent)
+        self.username = username
+        self.callback = callback
+        self.is_running = False
+        self.init_ui()
+
+    def init_ui(self):
+        """初始化按钮UI"""
+        self.setText('开始')
+        self.setFixedSize(80, 32)
+        self.update_style()
+
+        # 连接点击事件
+        self.clicked.connect(self.on_clicked)
+
+    def update_style(self):
+        """根据状态更新按钮样式"""
+        if self.is_running:
+            # 运行状态 - 橙色暂停按钮
+            self.setStyleSheet("""
+                QPushButton {
+                    background-color: #fd7e14;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    padding: 6px 12px;
+                }
+                QPushButton:hover {
+                    background-color: #e96a00;
+                }
+                QPushButton:pressed {
+                    background-color: #d45a00;
+                }
+            """)
+            self.setText('暂停')
+        else:
+            # 停止状态 - 绿色开始按钮
+            self.setStyleSheet("""
+                QPushButton {
+                    background-color: #28a745;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    padding: 6px 12px;
+                }
+                QPushButton:hover {
+                    background-color: #218838;
+                }
+                QPushButton:pressed {
+                    background-color: #1e7e34;
+                }
+            """)
+            self.setText('开始')
+
+    def on_clicked(self):
+        """按钮点击事件"""
+        self.is_running = not self.is_running
+        self.update_style()
+
+        # 执行回调函数
+        if self.callback:
+            self.callback(self.username, self.is_running)
+
+    def set_running(self, running):
+        """设置运行状态"""
+        self.is_running = running
+        self.update_style()
+
+
 class ButtonSwitch(QWidget):
     def __init__(self, normal_icon: str, pressed_icon: str, callback: callable):
         super().__init__()
@@ -519,6 +596,7 @@ class MainWindow(QWidget):
         self.console_windows = {}  # 存储控制台窗口
         self.agents = {}
         self.account_list = {}
+        self.download_buttons = {}
         self.export_path = user_home / 'Documents' / 'amazon'  # 全局导出目录
         ensure_dir_exists(self.export_path)
         self.init_ui()
@@ -971,32 +1049,65 @@ class MainWindow(QWidget):
         export_btn.clicked.connect(lambda: self.export_data(username))
 
         # 下载/暂停按钮
-        download_btn = ButtonSwitch(
-            normal_icon='icon/play_fill.png',
-            pressed_icon='icon/pause.png',
-            callback=lambda: self.start_download(username)
-        )
+        download_btn = DownloadButton(username, self.on_download_toggle)
+        self.download_buttons[username] = download_btn  # 存储按钮引用
 
         # 删除按钮
-        delete_btn = Button(
-            icon='icon/delete.png',
-            callback=self.delete_account,
-            username=username
-        )
+        delete_btn = QPushButton('删除')
+        delete_btn.setFixedSize(60, 32)
         delete_btn.setStyleSheet("""
             QPushButton {
                 background-color: #dc3545;
                 color: white;
-                padding: 6px;
+                border: none;
+                border-radius: 6px;
+                font-size: 12px;
+                font-weight: bold;
+                padding: 6px 12px;
             }
             QPushButton:hover {
                 background-color: #c82333;
+                background-image: url('icon/delete_white.png');
+                background-repeat: no-repeat;
+                background-position: center;
+            }
+            QPushButton:pressed {
+                background-color: #a71e2a;
             }
         """)
+        delete_btn.clicked.connect(lambda: self.delete_account(username))
 
-        button_layout.addWidget(console_btn)
-        button_layout.addWidget(export_btn)
+        # 复位按钮样式
+        restart_btn = QPushButton('重启')
+        restart_btn_style = """
+        QPushButton {
+            background-color: #6f42c1;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 6px 12px;
+            min-width: 60px;
+        }
+        QPushButton:hover {
+            background-color: #5a32a3;
+        }
+        QPushButton:pressed {
+            background-color: #4c2b8a;
+        }
+        QPushButton:disabled {
+            background-color: #a8a8a8;
+            color: #e0e0e0;
+        }
+        """
+        restart_btn.setStyleSheet(restart_btn_style)
+        restart_btn.setDisabled(True)
+
         button_layout.addWidget(download_btn)
+        button_layout.addWidget(restart_btn)
+        button_layout.addWidget(export_btn)
+        button_layout.addWidget(console_btn)
         button_layout.addWidget(delete_btn)
 
         top_layout.addLayout(button_layout)
@@ -1024,6 +1135,115 @@ class MainWindow(QWidget):
         item.setSizeHint(widget.sizeHint())
         self.account_list.addItem(item)
         self.account_list.setItemWidget(item, widget)
+
+    def simulate_progress_update(self, username):
+        """模拟进度更新（实际使用时替换为真实的进度回调）"""
+        if username not in self.download_buttons:
+            return
+
+        # 只有运行状态才更新进度
+        if not self.download_buttons[username].is_running:
+            return
+
+        # 模拟进度递增
+        def update_progress(progress):
+            if username not in self.download_buttons:
+                return
+
+            if not self.download_buttons[username].is_running:
+                return
+
+            # 更新进度条
+            for i in range(self.account_list.count()):
+                item = self.account_list.item(i)
+                widget = self.account_list.itemWidget(item)
+
+                if widget and widget.property("username") == username:
+                    progress_bar = None
+                    for child in widget.findChildren(QProgressBar):
+                        if child.property("username") == username:
+                            progress_bar = child
+                            break
+
+                    if progress_bar:
+                        progress_bar.setValue(progress)
+
+                    break
+
+            # 继续模拟进度
+            if progress < 100 and self.download_buttons[username].is_running:
+                QTimer.singleShot(100, lambda: update_progress(progress + 1))
+            elif progress >= 100:
+                # 完成时自动停止
+                self.download_buttons[username].set_running(False)
+                self.update_account_status(username, '已完成', '#28a745')
+                self.status_label.setText(f'{username} 爬取完成')
+
+                if username in self.console_windows:
+                    self.console_windows[username].update_logs(f"[完成] {username} 爬取任务已完成")
+
+        # 开始模拟进度
+        QTimer.singleShot(500, lambda: update_progress(0))
+
+    def on_download_toggle(self, username, is_running):
+        """下载按钮状态切换回调"""
+        try:
+            agent = self.agents[username]
+            if is_running:
+                # 开始下载
+                self.status_label.setText(f'{username} 开始爬取...')
+
+                # 更新状态标签
+                self.update_account_status(username, '爬取中', '#17a2b8')
+
+                # 更新控制台日志
+                if username in self.console_windows:
+                    self.console_windows[username].update_logs(f"[开始爬取] {username} 开始执行爬取任务")
+
+                # 这里调用实际的开始下载逻辑
+                # agent.start_download()
+
+                # 模拟进度更新（实际使用时替换为真实的进度回调）
+                self.simulate_progress_update(username)
+
+            else:
+                # 暂停下载
+                self.status_label.setText(f'{username} 已暂停')
+
+                # 更新状态标签
+                self.update_account_status(username, '已暂停', '#ffc107')
+
+                # 更新控制台日志
+                if username in self.console_windows:
+                    self.console_windows[username].update_logs(f"[暂停] {username} 爬取任务已暂停")
+
+                # 这里调用实际的暂停下载逻辑
+                # agent.pause_download()
+
+        except Exception as e:
+            QMessageBox.warning(self, '错误', f'操作失败: {str(e)}')
+            # 发生错误时恢复按钮状态
+            if username in self.download_buttons:
+                self.download_buttons[username].set_running(not is_running)
+
+    def update_account_status(self, username, status, color):
+        """更新账号状态标签"""
+        for i in range(self.account_list.count()):
+            item = self.account_list.item(i)
+            widget = self.account_list.itemWidget(item)
+
+            if widget and widget.property("username") == username:
+                # 查找状态标签
+                status_label = None
+                for child in widget.findChildren(QLabel):
+                    if child.property("username") == username:
+                        status_label = child
+                        break
+
+                if status_label:
+                    status_label.setText(f'状态: {status}')
+                    status_label.setStyleSheet(f"font-size: 12px; color: {color}; font-weight: bold;")
+                break
 
     def show_console(self, username):
         """显示控制台窗口"""
@@ -1079,36 +1299,75 @@ class MainWindow(QWidget):
 
     def delete_account(self, username):
         """删除账号"""
+        # 确认删除对话框
         reply = QMessageBox.question(
             self,
             '确认删除',
-            f'确定要删除账号 {username} 吗？\n此操作将删除所有相关数据。',
+            f'确定要删除账号 {username} 吗？\n此操作将删除所有相关数据且不可恢复。',
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )
+
         if reply == QMessageBox.Yes:
             try:
-                # 删除账号文件
+                # 停止该账号的下载任务
+                if username in self.download_buttons:
+                    self.download_buttons[username].set_running(False)
+
+                # 删除cookie文件
                 cookie_file = self.cookie_dir / f'{username}.json'
                 if cookie_file.exists():
                     cookie_file.unlink()
-                db.delete_account(username)
+                    print(f"已删除cookie文件: {cookie_file}")
 
-                # 从界面移除
+                # 删除数据库记录
+                db.delete_account(username)
+                print(f"已删除数据库记录: {username}")
+
+                # 关闭控制台窗口
+                if username in self.console_windows:
+                    self.console_windows[username].close()
+                    del self.console_windows[username]
+                    print(f"已关闭控制台窗口: {username}")
+
+                # 从内存中移除相关引用
                 if username in self.accounts:
                     del self.accounts[username]
                 if username in self.agents:
                     del self.agents[username]
-                if username in self.console_windows:
-                    self.console_windows[username].close()
-                    del self.console_windows[username]
+                if username in self.download_buttons:
+                    del self.download_buttons[username]
+                if username in self.delete_buttons:
+                    del self.delete_buttons[username]
 
-                # 重新加载列表
-                self.load_accounts()
+                # 从界面中移除对应的列表项
+                self.remove_account_item(username)
+
                 self.status_label.setText(f'账号 {username} 已删除')
+                QMessageBox.information(self, '删除成功', f'账号 {username} 已成功删除')
 
             except Exception as e:
-                QMessageBox.warning(self, '删除失败', f'删除账号时发生错误: {str(e)}')
+                error_msg = f'删除账号时发生错误: {str(e)}'
+                QMessageBox.warning(self, '删除失败', error_msg)
+                self.status_label.setText("删除失败")
+                print(f"删除账号错误: {e}")
+
+    def remove_account_item(self, username):
+        """从列表中移除账号项"""
+        for i in range(self.account_list.count()):
+            item = self.account_list.item(i)
+            widget = self.account_list.itemWidget(item)
+
+            if widget and widget.property("username") == username:
+                # 移除列表项
+                self.account_list.takeItem(i)
+
+                # 删除widget和item
+                widget.deleteLater()
+                del item
+
+                print(f"已从界面移除账号项: {username}")
+                break
 
 
 if __name__ == '__main__':
