@@ -1,4 +1,5 @@
 import json
+import traceback
 from typing import Set
 
 import requests
@@ -6,12 +7,17 @@ from PyQt5.QtCore import QObject, pyqtSignal
 from db_util import AmazonDatabase
 from constant import *
 from bs4 import BeautifulSoup
+
+from extractor import AmazonASINExtractor
 from product import Product
 from cookies import CookieManager
 from util import curr_milliseconds, ensure_dir_exists
 from urllib.parse import quote, urlencode
 from crypto import get_encrypt_by_str, base64_encode
 from pathlib import Path
+
+# 使用示例
+extractor = AmazonASINExtractor()
 
 class Agent(QObject):
 
@@ -108,57 +114,65 @@ class Agent(QObject):
         return resp.text
 
     def start_craw(self, url: str, session: requests.Session) -> Product:
-        start = url.rfind('/')
-        end = url.rfind('?')
-        if end == -1:
-            asin = url[start + 1:]
-        else:
-            asin = url[start + 1:end]
         product = Product()
-        product.asin = asin
-        product_payload['asinList'] = asin
-        product_payload['asin'] = asin
-        product_payload['landingAsin'] = asin
-        params = urlencode(product_payload)
-        detail_url = f'{PRODUCT_DETAIL_PAGE}?{params}'
-        detail_resp = session.get(detail_url, headers=self.headers, cookies=amazon_cookies)
-        detail = json.loads(detail_resp.text)
-        data = detail['Value']['content']['twisterSlotJson']
-        if 'price' in data:
-            product.price = float(data['price'])
-        else:
-            print(f'{url} 无法获取价格')
-            product.availability =  False
-            product.completed =  True
-            return product
-        main_page = session.get(f'https://www.amazon.com/dp/{asin}?th=1', headers=self.headers, cookies=amazon_cookies)
-        main_soup = BeautifulSoup(main_page.text, 'html.parser')
-        # buy_new = main_soup.select_one('#newAccordionCaption_feature_div').text.strip()
-        # product.used = 'Buy new' not in buy_new
-        availability_info = main_soup.select_one('#availability')
-        # 缺货
-        if availability_info and 'In Stock' in availability_info.text:
-            product.availability = True
-            shipping_info = self.extract_amazon_shipping_info(main_page.text)
+        try:
+            main_page = session.get(url, headers=self.headers, cookies=amazon_cookies)
+            main_soup = BeautifulSoup(main_page.text, 'html.parser')
+            new_product_div = main_soup.select_one('div[id^="newAccordionRow_"]')
+            if new_product_div is None:
+                buy_box_div = main_soup.select_one('#buybox')
+                availability_span = buy_box_div.select_one('#availability > span')
+                if availability_span is None:
+                    product.availability = False
+                else:
+                    product.availability = 'in stock' in availability_span.text.lower()
+                    if product.availability:
+                        price_span = buy_box_div.select_one('#corePrice_feature_div > div > div > span.a-price.aok-align-center > span.a-offscreen')
+                        product.price = float(price_span.text[1:])
+                        product.shipping_cost = buy_box_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE > span').text.strip().split(' ')[0]
+                        ships_from = buy_box_div.select_one('#fulfillerInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span').text.strip()
+                        sold_by = buy_box_div.select_one('#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover.aok-inline-block').text.strip()
+                        if ships_from == 'Amazon' or sold_by  == 'Amazon':
+                            product.shipping_from_amazon = True
+                        else:
+                            product.shipping_from_amazon = False
 
-            if shipping_info['ships_from'] == 'Amazon' or shipping_info['sold_by'] == 'Amazon':
-                product.shipping_from_amazon = True
+                    product.completed = True
             else:
-                product.shipping_from_amazon = False
-            delivery_info = main_soup.select_one('#mir-layout-DELIVERY_BLOCK').text.strip()
-            product.shipping_cost = delivery_info[:delivery_info.find('delivery')]
-        else:
-            product.availability = False
-        product.completed = True
-        return product
+                availability_span = new_product_div.select_one('#availability > span')
+                product.availability = 'in stock' in availability_span.text.lower()
+                price_span = new_product_div.select_one('#corePrice_feature_div > div > div > div > div > span.a-price.a-text-normal.aok-align-center.reinventPriceAccordionT2 > span.a-offscreen')
+                product.price = float(price_span.text[1:])
+                shipping_info_span = new_product_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_MEDIUM > span')
+                product.shipping_cost = shipping_info_span.text.strip().split(' ')[0]
+                shipping_from = new_product_div.select_one('#sfsb_accordion_head > div:nth-child(1) > div > span:nth-child(2)').text
+                sold_by = new_product_div.select_one('#sfsb_accordion_head > div:nth-child(2) > div > span:nth-child(2)').text
+                if shipping_from == 'Amazon' or sold_by == 'Amazon':
+                    product.shipping_from_amazon = True
+                else:
+                    product.shipping_from_amazon = False
+                product.completed = True
+            return product
+        except Exception as e:
+            print(f"爬虫执行失败 - URL: {url}")
+            print(f"错误类型: {type(e).__name__}")
+            print(f"错误信息: {str(e)}")
+            print("错误堆栈:")
+            traceback.print_exc()
 
-    def extract_amazon_shipping_info(self, html_content):
+            # 确保返回一个商品对象，即使出错了
+            if 'product' not in locals():
+                product = Product()
+                product.asin = extractor.extract_asin(url)
+            product.completed = False
+            return product
+
+    def extract_amazon_shipping_info(self, soup):
         """
         从亚马逊商品页面提取Ships from和Sold by信息
         返回字典包含: ships_from, sold_by, seller_link
         """
         try:
-            soup = BeautifulSoup(html_content, 'html.parser')
             result = {'ships_from': None, 'sold_by': None, 'seller_link': None}
             # 查找所有包含运输和销售信息的div
             feature_divs = soup.find_all('div', class_='celwidget', attrs={'data-feature-name': True})

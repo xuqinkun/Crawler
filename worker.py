@@ -118,8 +118,9 @@ class CrawlWorker(QObject):
                 self.log_updated.emit(self.username, f"{datetime.now().strftime("%Y-%m-%d %H:%M:%S")} {product.url} 解析完成")
                 self.progress_updated.emit(self.username, '爬取中', self.get_progress())
             except Exception as e:
-                error_msg = f"爬取过程中发生错误: {str(e)}"
-                self.error_occurred.emit(self.username, error_msg)
+                error_msg = f"爬取过程中发生错误: {product.url} {str(e)}"
+                self.log_updated.emit(self.username, error_msg)
+                print(error_msg)
 
         # 完成任务
         self.progress_updated.emit(self.username, '已完成', 100)

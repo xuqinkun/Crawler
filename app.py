@@ -14,6 +14,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit, QToolTip,
                              QFileDialog, QFrame, QProgressBar, QTextEdit)
 from pathlib import Path
 from agent import Agent
+from export import ExportWorker
 from worker import CrawlWorker
 from constant import *
 from util import curr_milliseconds, ensure_dir_exists
@@ -1430,54 +1431,40 @@ class MainWindow(QWidget):
         new_y = main_geometry.y() + 50
         console_window.move(new_x, new_y)
 
+    # 修改原方法
     def export_data(self, username, filename=None):
-        """将用户的产品数据导出到CSV文件"""
+        """将用户的产品数据导出到CSV文件（后台线程版本）"""
         try:
-            # 获取产品数据
-            products = db.get_all_products(username)
+            # 定义回调函数
+            def export_callback(success, message):
+                # 这里需要确保线程安全地更新UI
+                if success:
+                    print(f"导出成功: {message}")
+                    self.status_label.setText(f"成功导出数据到 {filename}")
+                else:
+                    print(f"导出失败: {message}")
+                    self.status_label.setText(f"导出失败: {message}")
 
-            if not products:
-                print(f"用户 {username} 没有产品数据")
-                return False
+            # 创建并启动工作器
+            self.export_worker = ExportWorker(
+                username=username,
+                filename=filename,
+                export_path=self.export_path,
+                callback=export_callback
+            )
 
-            # 如果没有指定文件名，生成默认文件名
-            if filename is None:
-                timestamp = datetime.now().strftime("%Y年%m月%d日_%H时%M分%S秒")
-                filename = self.export_path/username / f"products_{timestamp}.csv"
-                ensure_dir_exists(filename.parent)
+            # 更新UI状态
+            self.status_label.setText("正在后台导出数据...")
 
-            # 将产品对象转换为字典列表
-            products_data = []
-            for n, product in enumerate(products):
-                if product.completed:
-                    product_dict = {
-                        '序号': n + 1,
-                        '产品ID': str(product.product_id),
-                        'asin': product.asin,
-                        '链接': product.url,
-                        '有无库存': '有' if product.availability else '无',
-                        '价格': 'N/A',
-                        '运费': 'N/A',
-                        '是否二手': 'N/A',
-                        '从亚马逊发货': 'N/A',
-                    }
-                    if product.availability:
-                        product_dict['价格'] = product.price
-                        product_dict['运费'] = product.shipping_cost
-                        product_dict['是否二手'] = '是' if product.used else '否'
-                        product_dict['从亚马逊发货'] = '是' if product.shipping_from_amazon else '否'
-                    products_data.append(product_dict)
+            # 启动导出
+            self.export_worker.start()
 
-            # 创建DataFrame并导出到CSV
-            df = pd.DataFrame(products_data)
-            df.to_csv(filename, index=False, encoding='utf-8-sig')
-
-            print(f"成功导出 {len(products)} 条产品数据到 {filename}")
-            self.status_label.setText(f"成功导出 {len(products)} 条产品数据到 {filename}")
             return True
 
         except Exception as e:
-            print(f"导出CSV失败: {e}")
+            error_msg = f"启动导出失败: {str(e)}"
+            print(error_msg)
+            self.status_label.setText(error_msg)
             return False
 
     def clear(self, username):
