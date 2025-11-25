@@ -1078,7 +1078,6 @@ class MainWindow(QWidget):
             }
             QPushButton:hover {
                 background-color: #c82333;
-                background-image: url('icon/delete_white.png');
                 background-repeat: no-repeat;
                 background-position: center;
             }
