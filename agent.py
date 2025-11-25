@@ -160,10 +160,6 @@ class Agent(QObject):
             print("错误堆栈:")
             traceback.print_exc()
 
-            # 确保返回一个商品对象，即使出错了
-            if 'product' not in locals():
-                product = Product()
-                product.asin = extractor.extract_asin(url)
             product.completed = False
             return product
 
