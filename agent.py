@@ -142,7 +142,7 @@ class Agent(QObject):
                     product.availability = 'in stock' in availability_span.text.lower()
                     if product.availability:
                         price_span = buy_box_div.select_one('#corePrice_feature_div > div > div > span.a-price.aok-align-center > span.a-offscreen')
-                        product.price = float(price_span.text[1:])
+                        product.price = float(price_span.text[1:].replace(',', ''))
                         product.shipping_cost = buy_box_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE > span').text.strip().split(' ')[0]
                         ships_from = buy_box_div.select_one('#fulfillerInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span').text.strip()
                         sold_by_span = buy_box_div.select_one(
