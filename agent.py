@@ -132,6 +132,12 @@ class Agent(QObject):
                 product.used = True
                 product.completed = True
                 return product
+            used_div = main_soup.select_one('div#usedAccordionRow')
+            if used_div:
+                if main_soup.select_one('div[id^="newAccordionRow_"]') is None:
+                    product.used = True
+                    product.completed = True
+                    return product
             new_product_div = main_soup.select_one('div[id^="newAccordionRow_"]')
             if new_product_div is None:
                 buy_box_div = main_soup.select_one('#buybox')
@@ -285,5 +291,5 @@ if __name__ == '__main__':
     agent = Agent()
     agent.login('2b13257592627')
     session = requests.session()
-    product = agent.start_craw('https://www.amazon.com/dp/B0DRJJ28PK?th=1', session)
+    product = agent.start_craw('https://www.amazon.com/dp/B0CCN8V7JL?th=1', session)
     print(product)
