@@ -120,6 +120,11 @@ class Agent(QObject):
         product = Product()
         try:
             main_page = session.get(url, headers=self.headers, cookies=amazon_cookies)
+            if main_page.status_code != 200:
+                logger.warning(f'{url} is invalid, code={main_page.status_code}')
+                product.completed = True
+                product.invalid = True
+                return product
             main_soup = BeautifulSoup(main_page.text, 'html.parser')
             used_only_buy_box = main_soup.select_one('#usedOnlyBuybox')
             if used_only_buy_box:
@@ -140,8 +145,17 @@ class Agent(QObject):
                         product.price = float(price_span.text[1:])
                         product.shipping_cost = buy_box_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE > span').text.strip().split(' ')[0]
                         ships_from = buy_box_div.select_one('#fulfillerInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span').text.strip()
-                        sold_by = buy_box_div.select_one('#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover.aok-inline-block').text.strip()
-                        if ships_from == 'Amazon' or sold_by  == 'Amazon':
+                        sold_by_span = buy_box_div.select_one(
+                            '#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover.aok-inline-block')
+                        if sold_by_span:
+                            sold_by = sold_by_span.text.strip()
+                        else:
+                            sold_by_span = buy_box_div.select_one('#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
+                            if sold_by_span:
+                                sold_by = sold_by_span.text.strip()
+                            else:
+                                sold_by = ''
+                        if 'amazon' in ships_from.lower() or 'amazon' in sold_by.lower():
                             product.shipping_from_amazon = True
                         else:
                             product.shipping_from_amazon = False
@@ -150,12 +164,15 @@ class Agent(QObject):
                 availability_span = new_product_div.select_one('#availability > span')
                 product.availability = 'in stock' in availability_span.text.lower()
                 price_span = new_product_div.select_one('#corePrice_feature_div > div > div > div > div > span.a-price.a-text-normal.aok-align-center.reinventPriceAccordionT2 > span.a-offscreen')
-                product.price = float(price_span.text[1:])
-                shipping_info_span = new_product_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_MEDIUM > span')
-                product.shipping_cost = shipping_info_span.text.strip().split(' ')[0]
-                shipping_from = new_product_div.select_one('#sfsb_accordion_head > div:nth-child(1) > div > span:nth-child(2)').text
-                sold_by = new_product_div.select_one('#sfsb_accordion_head > div:nth-child(2) > div > span:nth-child(2)').text
-                if shipping_from == 'Amazon' or sold_by == 'Amazon':
+                product.price = float(price_span.text[1:].replace(',', ''))
+                shipping_info = new_product_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_MEDIUM')
+                if shipping_info is None:
+                    shipping_info = new_product_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-NO_PROMISE_UPSELL_MESSAGE')
+                product.shipping_cost = shipping_info.text.strip().split(' ')[0]
+                shipping_from = new_product_div.select_one('#sfsb_accordion_head > div:nth-child(1) > div > '
+                                                           'span:nth-child(2)').text.strip()
+                sold_by = new_product_div.select_one('#sfsb_accordion_head > div:nth-child(2) > div > span:nth-child(2)').text.strip()
+                if 'amazon' in shipping_from.lower() or 'amazon' in sold_by.lower():
                     product.shipping_from_amazon = True
                 else:
                     product.shipping_from_amazon = False
@@ -268,4 +285,5 @@ if __name__ == '__main__':
     agent = Agent()
     agent.login('2b13257592627')
     session = requests.session()
-    agent.start_craw('https://www.amazon.com/dp/B0DZNM99Y2', session)
+    product = agent.start_craw('https://www.amazon.com/dp/B0DRJJ28PK?th=1', session)
+    print(product)

@@ -21,3 +21,4 @@ class Product():
     owner: str = None
     created_at: time = None
     updated_at: time = None
+    invalid: bool = False

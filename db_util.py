@@ -47,6 +47,7 @@ class AmazonDatabase:
                     currency TEXT,
                     url TEXT,
                     used INTEGER DEFAULT 0,
+                    invalid INTEGER DEFAULT 0,
                     availability INTEGER DEFAULT 0,                                        
                     completed INTEGER DEFAULT 0,
                     shipping_from_amazon TEXT,
@@ -79,9 +80,9 @@ class AmazonDatabase:
         try:
             self.cursor.execute('''
             INSERT INTO product 
-            (product_id, asin, url, price, used,
-            shipping_from_amazon, shipping_cost, availability, owner, completed)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,?)
+            (product_id, asin, url, price, used,shipping_from_amazon, shipping_cost, 
+            availability, owner, completed, invalid)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(product_id) DO UPDATE SET
                 asin = COALESCE(excluded.asin, asin),
                 url = COALESCE(excluded.url, url),
@@ -92,6 +93,7 @@ class AmazonDatabase:
                 availability = COALESCE(excluded.availability, availability),
                 owner = COALESCE(excluded.owner, owner),
                 completed = COALESCE(excluded.completed, completed),
+                invalid = COALESCE(excluded.invalid, invalid),
                 updated_at = CURRENT_TIMESTAMP
                 ''', (
                 product.product_id,
@@ -103,7 +105,8 @@ class AmazonDatabase:
                 product.shipping_cost,
                 product.availability,
                 product.owner,
-                product.completed
+                product.completed,
+                product.invalid,
             ))
             self.conn.commit()
             return True

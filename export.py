@@ -56,8 +56,11 @@ class ExportWorker:
                         '运费': 'N/A',
                         '是否二手': 'N/A',
                         '从亚马逊发货': 'N/A',
+                        '备注': '',
                     }
-                    if product.availability:
+                    if product.invalid:
+                        product_dict['备注'] = '链接失效'
+                    elif product.availability:
                         product_dict['价格'] = product.price
                         product_dict['运费'] = product.shipping_cost
                         product_dict['是否二手'] = '是' if product.used else '否'
