@@ -3,27 +3,29 @@ import os
 import platform
 import subprocess
 import sys
-from datetime import datetime
-import pandas as pd
-import requests
+from pathlib import Path
 
+import requests
 from PyQt5.QtCore import Qt, QByteArray, QTimer, QSize, QThread
 from PyQt5.QtGui import QPixmap, QCursor, QIcon
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit, QToolTip,
                              QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox, QListWidget, QListWidgetItem,
                              QFileDialog, QFrame, QProgressBar, QTextEdit)
-from pathlib import Path
+
 from agent import Agent
-from export import ExportWorker
-from worker import CrawlWorker
 from constant import *
-from util import curr_milliseconds, ensure_dir_exists
 from db_util import AmazonDatabase
+from export import ExportWorker
+from logger import setup_concurrent_logging
+from util import curr_milliseconds, ensure_dir_exists
+from worker import CrawlWorker
 
 db = AmazonDatabase()
 db.connect()
 db.init()
 user_home = Path(os.path.expanduser('~'))
+
+logger = setup_concurrent_logging()
 
 class ClickableLabel(QLabel):
     """可点击的QLabel，用于验证码图片"""
@@ -431,7 +433,9 @@ class LoginWindow(QWidget):
                self.save_account(username, password)
                return True
         except Exception as e:
-            print(f"登录验证错误: {e}")
+            err_msg = f"登录验证错误: {e}"
+            print(err_msg)
+            logger.error(err_msg)
             return False
 
     def save_account(self, username: str, password: str):
@@ -446,7 +450,9 @@ class LoginWindow(QWidget):
             with account_save_file.open('w', encoding=DEFAULT_ENCODING) as f:
                 json.dump(account, fp=f)
         except Exception as e:
-            print(f'保存cookie失败[account={username}]:{e}')
+            err = f'保存cookie失败[account={username}]:{e}'
+            print(err)
+            logger.error(err)
 
 
 class ConsoleWindow(QWidget):
@@ -794,13 +800,17 @@ class MainWindow(QWidget):
                 subprocess.run(["xdg-open", str(self.export_path)])
 
             self.status_label.setText(f"已打开导出目录: {self.export_path}")
-            print(f"打开导出目录: {self.export_path}")
+            info = f"打开导出目录: {self.export_path}"
+            print(info)
+            logger.info(info)
 
         except Exception as e:
             error_msg = f"无法打开导出目录: {str(e)}"
             QMessageBox.warning(self, "打开目录失败", error_msg)
             self.status_label.setText("打开目录失败")
-            print(f"打开目录错误: {e}")
+            err = f"打开目录错误: {e}"
+            print(err)
+            logger.error(err)
 
     def closeEvent(self, event):
         """重写关闭事件，确保资源正确释放"""
@@ -818,7 +828,9 @@ class MainWindow(QWidget):
                 QMessageBox.No
             )
         else:
-            print('没用后台任务，直接退出')
+            info = '没用后台任务，直接退出'
+            print(info)
+            logger.info(info)
             reply = QMessageBox.Yes
         if reply == QMessageBox.Yes:
             self.is_closing = True
@@ -840,7 +852,9 @@ class MainWindow(QWidget):
 
             # 接受关闭事件
             event.accept()
-            print("程序已安全退出")
+            info = "程序已安全退出"
+            print(info)
+            logger.info(info)
         else:
             # 忽略关闭事件
             event.ignore()
@@ -848,6 +862,7 @@ class MainWindow(QWidget):
     def stop_all_agents(self):
         """停止所有Agent的爬取任务"""
         print("正在停止所有爬取任务...")
+        logger.info("正在停止所有爬取任务...")
         for username, agent in self.agents.items():
             try:
                 if hasattr(agent, 'stop'):
@@ -1177,7 +1192,8 @@ class MainWindow(QWidget):
                 if username in self.console_windows:
                     self.console_windows[username].update_logs(f"[暂停] {username} 爬取任务已暂停")
         except Exception as e:
-            QMessageBox.warning(self, '错误', f'操作失败: {str(e)}')
+            logger.error(f'操作失败: {str(e)}')
+            self.status_label.setText(f'{username} 操作失败: {str(e)}')
             # 发生错误时恢复按钮状态
             if username in self.start_buttons:
                 self.start_buttons[username].set_running(not is_running)
@@ -1192,6 +1208,7 @@ class MainWindow(QWidget):
 
         except Exception as e:
             print(f"恢复爬取任务时出错: {e}")
+            logger.error(f"恢复爬取任务时出错: {e}")
 
     def start_worker(self, username):
         """开始爬取任务"""
@@ -1203,7 +1220,7 @@ class MainWindow(QWidget):
                 self.resume_worker(username)
 
             # 创建工作线程和QThread
-            self.crawl_workers[username] = CrawlWorker(username=username, agent=agent)
+            self.crawl_workers[username] = CrawlWorker(username=username, agent=agent, logger=logger)
             self.crawl_threads[username] = QThread()
 
             # 将工作线程移动到新线程
@@ -1235,7 +1252,8 @@ class MainWindow(QWidget):
 
         except Exception as e:
             error_msg = f'启动爬取任务失败: {str(e)}'
-            QMessageBox.warning(self, '错误', error_msg)
+            self.status_label.setText(error_msg)
+            logger.error(error_msg)
             if username in self.start_buttons:
                 self.start_buttons[username].set_running(False)
 
@@ -1246,9 +1264,10 @@ class MainWindow(QWidget):
                 worker = self.crawl_workers[username]
                 worker.pause()
                 print(f"已暂停 {username} 的爬取任务")
-
         except Exception as e:
             print(f"暂停爬取任务时出错: {e}")
+            self.status_label.setText(f"暂停爬取任务时出错: {e}")
+            logger.error(f"暂停爬取任务时出错: {e}")
 
     def stop_worker(self, username):
         """停止爬取任务"""
@@ -1275,6 +1294,8 @@ class MainWindow(QWidget):
 
         except Exception as e:
             print(f"停止爬取任务时出错: {e}")
+            logger.error(f"停止爬取任务时出错: {e}")
+            self.status_label.setText(f"停止爬取任务时出错: {e}")
 
     def on_progress_updated(self, username, status, progress):
         """处理进度更新信号"""
@@ -1463,6 +1484,7 @@ class MainWindow(QWidget):
         except Exception as e:
             error_msg = f"启动导出失败: {str(e)}"
             print(error_msg)
+            logger.error(error_msg)
             self.status_label.setText(error_msg)
             return False
 
@@ -1547,6 +1569,7 @@ class MainWindow(QWidget):
                 QMessageBox.warning(self, '删除失败', error_msg)
                 self.status_label.setText("删除失败")
                 print(f"删除账号错误: {e}")
+                logger.error(f"删除账号错误: {e}")
 
     def remove_account_item(self, username):
         """从列表中移除账号项"""
@@ -1590,4 +1613,5 @@ if __name__ == '__main__':
 
     except Exception as e:
         print(f"应用程序启动失败: {e}")
+        logger.error(f"应用程序启动失败: {e}")
         sys.exit(1)

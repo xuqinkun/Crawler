@@ -16,9 +16,10 @@ class CrawlWorker(QObject):
     finished = pyqtSignal(str)  # 用户名
     error_occurred = pyqtSignal(str, str)  # 用户名, 错误信息
 
-    def __init__(self, username, agent):
+    def __init__(self, username, agent, logger):
         super().__init__()
         self.username = username
+        self.logger = logger
         self.agent = agent
         self.completed_num = 0
         self.total_num = 0
@@ -122,6 +123,7 @@ class CrawlWorker(QObject):
                 error_msg = f"爬取过程中发生错误: {product.url} {str(e)}"
                 self.log_updated.emit(self.username, error_msg)
                 print(error_msg)
+                self.logger.error(error_msg)
 
         # 完成任务
         self.progress_updated.emit(self.username, '已完成', 100)

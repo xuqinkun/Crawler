@@ -1,23 +1,25 @@
 import json
 import traceback
+from pathlib import Path
 from typing import Set
+from urllib.parse import quote
 
 import requests
-from PyQt5.QtCore import QObject, pyqtSignal
-from db_util import AmazonDatabase
-from constant import *
+from PyQt5.QtCore import QObject
 from bs4 import BeautifulSoup
 
-from extractor import AmazonASINExtractor
-from product import Product
+from constant import *
 from cookies import CookieManager
-from util import curr_milliseconds, ensure_dir_exists
-from urllib.parse import quote, urlencode
 from crypto import get_encrypt_by_str, base64_encode
-from pathlib import Path
+from db_util import AmazonDatabase
+from extractor import AmazonASINExtractor
+from logger import setup_concurrent_logging
+from product import Product
+from util import curr_milliseconds, ensure_dir_exists
 
 # 使用示例
 extractor = AmazonASINExtractor()
+logger = setup_concurrent_logging()
 
 class Agent(QObject):
 
@@ -60,6 +62,7 @@ class Agent(QObject):
             return cookies
         except Exception as e:
             print(f'读取cookie错误[account={account}]: {e}')
+            logger.error(f'读取cookie错误[account={account}]: {e}')
             return {}
 
     def get_captcha(self):
@@ -118,6 +121,12 @@ class Agent(QObject):
         try:
             main_page = session.get(url, headers=self.headers, cookies=amazon_cookies)
             main_soup = BeautifulSoup(main_page.text, 'html.parser')
+            used_only_buy_box = main_soup.select_one('#usedOnlyBuybox')
+            if used_only_buy_box:
+                print(f'{url} used only')
+                product.used = True
+                product.completed = True
+                return product
             new_product_div = main_soup.select_one('div[id^="newAccordionRow_"]')
             if new_product_div is None:
                 buy_box_div = main_soup.select_one('#buybox')
@@ -136,7 +145,6 @@ class Agent(QObject):
                             product.shipping_from_amazon = True
                         else:
                             product.shipping_from_amazon = False
-
                     product.completed = True
             else:
                 availability_span = new_product_div.select_one('#availability > span')
@@ -155,11 +163,7 @@ class Agent(QObject):
             return product
         except Exception as e:
             print(f"爬虫执行失败 - URL: {url}")
-            print(f"错误类型: {type(e).__name__}")
             print(f"错误信息: {str(e)}")
-            print("错误堆栈:")
-            traceback.print_exc()
-
             product.completed = False
             return product
 
@@ -261,11 +265,7 @@ class Agent(QObject):
 
 
 if __name__ == '__main__':
-    db = AmazonDatabase()
-    db.connect()
-    db.init()
-    agent = Agent(db)
+    agent = Agent()
     agent.login('2b13257592627')
-
-    agent.db.close()
-
+    session = requests.session()
+    agent.start_craw('https://www.amazon.com/dp/B0DZNM99Y2', session)
