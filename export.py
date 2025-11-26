@@ -13,8 +13,6 @@ class ExportWorker:
     def __init__(self, username, filename, export_path, callback=None):
         self.username = username
         self.filename = filename
-        self.db = AmazonDatabase()
-        self.db.connect()
         self.export_path = export_path
         self.callback = callback  # 完成回调函数
         self.thread = None
@@ -29,7 +27,9 @@ class ExportWorker:
         """在后台线程中执行导出操作"""
         try:
             # 获取产品数据
-            products = self.db.get_all_products(self.username)
+            db = AmazonDatabase()
+            db.connect()
+            products = db.get_all_products(self.username)
 
             if not products:
                 if self.callback:
@@ -70,7 +70,7 @@ class ExportWorker:
 
             success_msg = f"成功导出 {len(products_data)} 条产品数据到 {self.filename}"
             if self.callback:
-                self.callback(True, success_msg)
+                self.callback(True, success_msg, self.filename)
 
         except Exception as e:
             error_msg = f"导出数据时出错: {str(e)}"

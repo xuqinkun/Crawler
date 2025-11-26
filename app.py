@@ -1114,7 +1114,6 @@ class MainWindow(QWidget):
         }
         """
         clear_btn.setStyleSheet(restart_btn_style)
-        clear_btn.setDisabled(True)
         clear_btn.clicked.connect(lambda: self.clear(username))
 
         button_layout.addWidget(start_btn)
@@ -1436,11 +1435,11 @@ class MainWindow(QWidget):
         """将用户的产品数据导出到CSV文件（后台线程版本）"""
         try:
             # 定义回调函数
-            def export_callback(success, message):
+            def export_callback(success, message, path):
                 # 这里需要确保线程安全地更新UI
                 if success:
                     print(f"导出成功: {message}")
-                    self.status_label.setText(f"成功导出数据到 {filename}")
+                    self.status_label.setText(f"成功导出数据到 {path}")
                 else:
                     print(f"导出失败: {message}")
                     self.status_label.setText(f"导出失败: {message}")
