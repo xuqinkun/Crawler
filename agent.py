@@ -155,7 +155,11 @@ class Agent(QObject):
                 if product.availability:
                     price_span = buy_box_div.select_one('#corePrice_feature_div > div > div > span.a-price.aok-align-center > span.a-offscreen')
                     product.price = float(price_span.text[1:].replace(',', ''))
-                    product.shipping_cost = buy_box_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE > span').text.strip().split(' ')[0]
+                    delivery_tag = buy_box_div.select_one(
+                        '#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE > span')
+                    if delivery_tag is None:
+                        delivery_tag = buy_box_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-NO_PROMISE_UPSELL_MESSAGE > a')
+                    product.shipping_cost = delivery_tag.text.strip().split(' ')[0]
                     ships_from = buy_box_div.select_one('#fulfillerInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span').text.strip()
                     sold_by_span = buy_box_div.select_one(
                         '#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover.aok-inline-block')
@@ -239,5 +243,5 @@ if __name__ == '__main__':
     agent = Agent()
     agent.login('2b13257592627')
     session = requests.session()
-    product = agent.start_craw('https://www.amazon.com/dp/B0D9PKBF8Y?th=1', session)
+    product = agent.start_craw('https://www.amazon.com/dp/B0DRNZ1JSY', session)
     print(product)
