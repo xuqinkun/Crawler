@@ -125,13 +125,11 @@ class Agent(QObject):
         main_soup = BeautifulSoup(main_page.text, 'html.parser')
         learn_more_span = main_soup.select_one('#fod-cx-message-with-learn-more > span:nth-child(1)')
         if learn_more_span:
-            learn_more_info = learn_more_span.text
-            if 'no featured' in learn_more_info.lower():
-                print(f'{url} 无商品信息')
-                logger.warning(f'{url} 无商品信息')
-                product.completed = True
-                product.invalid = True
-                return product
+            print(f'{url} 无商品信息')
+            logger.warning(f'{url} 无商品信息')
+            product.completed = True
+            product.invalid = True
+            return product
         used_only_buy_box = main_soup.select_one('#usedOnlyBuybox')
         if used_only_buy_box:
             print(f'{url} 是二手商品')
