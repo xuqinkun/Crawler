@@ -99,9 +99,10 @@ class CrawlWorker(QObject):
             self.progress_updated.emit(self.username, '爬取中', self.get_progress())
         session = requests.Session()
         session.cookies.update(amazon_cookies)
-
+        err_count = {}
         while len(product_uncompleted) > 0:
             product = product_uncompleted.pop()
+            product_id = product.product_id
             try:
                 if self.is_stopped:
                     self.log_updated.emit(self.username, f"[中断] {self.username} 爬取任务被中断")
@@ -111,7 +112,7 @@ class CrawlWorker(QObject):
                 if self.is_stopped:
                     return
                 data = self.agent.start_craw(url=product.url, session=session)
-                data.product_id = product.product_id
+                data.product_id = product_id
                 # 更新进度
                 # 检查是否暂停
                 self.wait_if_paused()
@@ -129,7 +130,9 @@ class CrawlWorker(QObject):
                 self.log_updated.emit(self.username, error_msg)
                 print(error_msg)
                 self.logger.error(error_msg)
-                product_uncompleted.append(product)
+                err_count[product_id] = err_count.get(product_id, 0) + 1
+                if err_count.get(product_id) <= 3:
+                    product_uncompleted.append(product)
 
         # 完成任务
         self.progress_updated.emit(self.username, '已完成', 100)
