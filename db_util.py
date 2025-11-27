@@ -221,6 +221,7 @@ class AmazonDatabase:
                     asin=row['asin'],
                     url=row['url'],
                     price=row['price'],
+                    invalid=row['invalid'],
                     availability=row['availability'],
                     completed=bool(row['completed']),
                     shipping_cost=row['shipping_cost'],
