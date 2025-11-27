@@ -124,12 +124,14 @@ class Agent(QObject):
             return product
         main_soup = BeautifulSoup(main_page.text, 'html.parser')
         learn_more_span = main_soup.select_one('#fod-cx-message-with-learn-more > span:nth-child(1)')
-        if learn_more_span:
+        out_of_stock_div = main_soup.select_one('#outOfStock')
+        if learn_more_span or out_of_stock_div:
             print(f'{url} 无商品信息')
             logger.warning(f'{url} 无商品信息')
             product.completed = True
             product.invalid = True
             return product
+
         used_only_buy_box = main_soup.select_one('#usedOnlyBuybox')
         if used_only_buy_box:
             print(f'{url} 是二手商品')
@@ -193,63 +195,6 @@ class Agent(QObject):
             product.completed = True
         return product
 
-    def extract_amazon_shipping_info(self, soup):
-        """
-        从亚马逊商品页面提取Ships from和Sold by信息
-        返回字典包含: ships_from, sold_by, seller_link
-        """
-        try:
-            result = {'ships_from': None, 'sold_by': None, 'seller_link': None}
-            # 查找所有包含运输和销售信息的div
-            feature_divs = soup.find_all('div', class_='celwidget', attrs={'data-feature-name': True})
-
-            for div in feature_divs:
-                feature_name = div.get('data-feature-name', '')
-
-                # Ships from 信息
-                if feature_name == 'fulfillerInfoFeature_feature_div':
-                    ships_from_span = div.find('span', class_='a-size-small a-color-tertiary', string='Ships from')
-                    if ships_from_span:
-                        # 在同一个feature_div中查找商家名称
-                        name_span = div.find('span', class_='offer-display-feature-text-message')
-                        if name_span:
-                            result['ships_from'] = name_span.get_text(strip=True)
-
-                # Sold by 信息
-                elif feature_name == 'merchantInfoFeature_feature_div':
-                    sold_by_span = div.find('span', class_='a-size-small a-color-tertiary', string='Sold by')
-                    if sold_by_span:
-                        # 查找商家名称和链接
-                        seller_link = div.find('a',
-                                               class_='a-size-small a-link-normal offer-display-feature-text-message')
-                        if seller_link:
-                            result['sold_by'] = seller_link.get_text(strip=True)
-                            result['seller_link'] = seller_link.get('href', '')
-
-            # 备用方法：如果上述方法没找到，尝试直接搜索文本
-            if not result['ships_from']:
-                ships_from_elements = soup.find_all('span', class_='a-size-small a-color-tertiary', string='Ships from')
-                for element in ships_from_elements:
-                    next_text = element.find_next('span', class_='offer-display-feature-text-message')
-                    if next_text:
-                        result['ships_from'] = next_text.get_text(strip=True)
-                        break
-
-            if not result['sold_by']:
-                sold_by_elements = soup.find_all('span', class_='a-size-small a-color-tertiary', string='Sold by')
-                for element in sold_by_elements:
-                    next_link = element.find_next('a',
-                                                  class_='a-size-small a-link-normal offer-display-feature-text-message')
-                    if next_link:
-                        result['sold_by'] = next_link.get_text(strip=True)
-                        result['seller_link'] = next_link.get('href', '')
-                        break
-
-        except Exception as e:
-            print(f"提取运输信息时出错: {e}")
-
-        return result
-
     def parse_product_list(self, ids: Set[int]):
         if not self.online:
             return [], 0
@@ -294,5 +239,5 @@ if __name__ == '__main__':
     agent = Agent()
     agent.login('2b13257592627')
     session = requests.session()
-    product = agent.start_craw('https://www.amazon.com/dp/B089K6BJP9?th=1', session)
+    product = agent.start_craw('https://www.amazon.com/dp/B0D9PKBF8Y?th=1', session)
     print(product)

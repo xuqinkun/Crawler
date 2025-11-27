@@ -131,8 +131,7 @@ class CrawlWorker(QObject):
                 print(error_msg)
                 self.logger.error(error_msg)
                 err_count[product_id] = err_count.get(product_id, 0) + 1
-                if err_count.get(product_id) <= 3:
-                    product_uncompleted.append(product)
+                product_uncompleted.insert(0, product)
 
         # 完成任务
         self.progress_updated.emit(self.username, '已完成', 100)
