@@ -100,7 +100,7 @@ class CrawlWorker(QObject):
         session = requests.Session()
         session.cookies.update(amazon_cookies)
         err_count = {}
-        while len(product_uncompleted) > 0:
+        while self.completed_num < self.total_num:
             product = product_uncompleted.pop()
             product_id = product.product_id
             try:
@@ -134,10 +134,11 @@ class CrawlWorker(QObject):
                 product_uncompleted.insert(0, product)
 
         # 完成任务
-        self.progress_updated.emit(self.username, '已完成', 100)
-        self.status_updated.emit(self.username, "已完成")
-        self.log_updated.emit(self.username, f"[完成] {self.username} 爬取任务已完成")
-        self.finished.emit(self.username)
+        if self.completed_num == self.total_num:
+            self.progress_updated.emit(self.username, '已完成', 100)
+            self.status_updated.emit(self.username, "已完成")
+            self.log_updated.emit(self.username, f"[完成] {self.username} 爬取任务已完成")
+            self.finished.emit(self.username)
 
     def stop(self):
         """停止爬取任务"""
