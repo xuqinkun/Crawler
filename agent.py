@@ -1,5 +1,4 @@
 import json
-import traceback
 from pathlib import Path
 from typing import Set
 from urllib.parse import quote
@@ -11,7 +10,6 @@ from bs4 import BeautifulSoup
 from constant import *
 from cookies import CookieManager
 from crypto import get_encrypt_by_str, base64_encode
-from db_util import AmazonDatabase
 from extractor import AmazonASINExtractor
 from logger import setup_concurrent_logging
 from product import Product

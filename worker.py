@@ -1,9 +1,10 @@
 from datetime import datetime
 
 import requests
-from db_util import AmazonDatabase
-from constant import amazon_cookies
 from PyQt5.QtCore import QObject, pyqtSignal, QWaitCondition, QMutex
+
+from constant import amazon_cookies
+from db_util import AmazonDatabase
 
 
 class CrawlWorker(QObject):

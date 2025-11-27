@@ -1275,14 +1275,6 @@ class MainWindow(QWidget):
             if username in self.crawl_workers:
                 # 停止工作线程
                 self.crawl_workers[username].stop()
-                #
-                # # 停止QThread
-                # if username in self.crawl_threads:
-                #     self.crawl_threads[username].quit()
-                #
-                #     # 清理资源
-                #     del self.crawl_workers[username]
-                #     del self.crawl_threads[username]
 
                 # 更新界面状态
                 self.status_label.setText(f'{username} 就绪')
