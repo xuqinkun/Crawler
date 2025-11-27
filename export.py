@@ -59,7 +59,7 @@ class ExportWorker:
                         '备注': '',
                     }
                     if product.invalid:
-                        product_dict['备注'] = '链接失效'
+                        product_dict['备注'] = '异常'
                     elif product.availability:
                         product_dict['价格'] = product.price
                         product_dict['运费'] = product.shipping_cost

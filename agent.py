@@ -167,6 +167,10 @@ class Agent(QObject):
             availability_span = new_product_div.select_one('#availability > span')
             product.availability = 'in stock' in availability_span.text.lower()
             price_span = new_product_div.select_one('#corePrice_feature_div > div > div > div > div > span.a-price.a-text-normal.aok-align-center.reinventPriceAccordionT2 > span.a-offscreen')
+            if price_span is None:
+                product.invalid = True
+                product.completed = True
+                return product
             product.price = float(price_span.text[1:].replace(',', ''))
             shipping_info = new_product_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_MEDIUM')
             if shipping_info is None:
@@ -283,5 +287,5 @@ if __name__ == '__main__':
     agent = Agent()
     agent.login('2b13257592627')
     session = requests.session()
-    product = agent.start_craw('https://www.amazon.com/dp/B0CNXJHC42', session)
+    product = agent.start_craw('https://www.amazon.com/dp/B0CG9DNL6P', session)
     print(product)
