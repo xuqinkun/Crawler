@@ -160,8 +160,16 @@ class Agent(QObject):
                         '#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE > span')
                     if delivery_tag is None:
                         delivery_tag = buy_box_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-NO_PROMISE_UPSELL_MESSAGE > a')
-                    product.shipping_cost = delivery_tag.text.strip().split(' ')[0]
-                    ships_from = buy_box_div.select_one('#fulfillerInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span').text.strip()
+                    if delivery_tag:
+                        product.shipping_cost = delivery_tag.text.strip().split(' ')[0]
+                    else:
+                        print(f'{url} 无法获取运费信息')
+                    ships_from_span = buy_box_div.select_one('#fulfillerInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
+                    if ships_from_span:
+                        ships_from = ships_from_span.text.strip()
+                    else:
+                        ships_from = ''
+                        print(f'{url} 无法获取货源地信息')
                     sold_by_span = buy_box_div.select_one(
                         '#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover.aok-inline-block')
                     if sold_by_span:
@@ -172,6 +180,7 @@ class Agent(QObject):
                             sold_by = sold_by_span.text.strip()
                         else:
                             sold_by = ''
+                            print(f'{url} 无法获取卖方信息')
                     if 'amazon' in ships_from.lower() or 'amazon' in sold_by.lower():
                         product.shipping_from_amazon = True
                     else:
@@ -189,10 +198,23 @@ class Agent(QObject):
             shipping_info = new_product_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_MEDIUM')
             if shipping_info is None:
                 shipping_info = new_product_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-NO_PROMISE_UPSELL_MESSAGE')
-            product.shipping_cost = shipping_info.text.strip().split(' ')[0]
-            shipping_from = new_product_div.select_one('#sfsb_accordion_head > div:nth-child(1) > div > '
-                                                       'span:nth-child(2)').text.strip()
-            sold_by = new_product_div.select_one('#sfsb_accordion_head > div:nth-child(2) > div > span:nth-child(2)').text.strip()
+            if shipping_info:
+                product.shipping_cost = shipping_info.text.strip().split(' ')[0]
+            else:
+                print(f'{url} 获取运费信息失败')
+            shipping_from_span = new_product_div.select_one('#sfsb_accordion_head > div:nth-child(1) > div > ' \
+                                             'span:nth-child(2)')
+            if shipping_from_span:
+                shipping_from = shipping_from_span.text.strip()
+            else:
+                shipping_from = ''
+                print(f'{url} 获取货源地信息失败')
+            sold_by_span = new_product_div.select_one('#sfsb_accordion_head > div:nth-child(2) > div > span:nth-child(2)')
+            if sold_by_span:
+                sold_by = sold_by_span.text.strip()
+            else:
+                sold_by = ''
+                print(f'{url} 获取卖方信息失败')
             if 'amazon' in shipping_from.lower() or 'amazon' in sold_by.lower():
                 product.shipping_from_amazon = True
             else:
@@ -244,5 +266,5 @@ if __name__ == '__main__':
     agent = Agent()
     agent.login('2b13257592627')
     session = requests.session()
-    product = agent.start_craw('https://www.amazon.com/dp/BOBJ6BJXYN', session)
+    product = agent.start_craw('https://www.amazon.com/dp/B0BKTC251N', session)
     print(product)
