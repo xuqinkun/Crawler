@@ -188,7 +188,11 @@ class Agent(QObject):
                 product.completed = True
         else:
             availability_span = new_product_div.select_one('#availability > span')
-            product.availability = 'in stock' in availability_span.text.lower()
+            if availability_span is None:
+                print(f'{url} 获取库存信息失败')
+                product.availability = False
+            else:
+                product.availability = 'in stock' in availability_span.text.lower()
             price_span = new_product_div.select_one('#corePrice_feature_div > div > div > div > div > span.a-price.a-text-normal.aok-align-center.reinventPriceAccordionT2 > span.a-offscreen')
             if price_span is None:
                 product.invalid = True
@@ -202,8 +206,7 @@ class Agent(QObject):
                 product.shipping_cost = shipping_info.text.strip().split(' ')[0]
             else:
                 print(f'{url} 获取运费信息失败')
-            shipping_from_span = new_product_div.select_one('#sfsb_accordion_head > div:nth-child(1) > div > ' \
-                                             'span:nth-child(2)')
+            shipping_from_span = new_product_div.select_one('#sfsb_accordion_head > div:nth-child(1) > div > span:nth-child(2)')
             if shipping_from_span:
                 shipping_from = shipping_from_span.text.strip()
             else:
