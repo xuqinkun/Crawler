@@ -73,7 +73,16 @@ class Agent(QObject):
     def login(self, username: str, password: str = '', captcha: str = ''):
         self.username = username
         valid = self.cookie_manager.load_cookies_json(self.session, username)
-        if not valid:
+        if valid:
+            product_page = f'{ROOT}/{PRODUCT_PAGE}'
+            resp = self.session.post(product_page, headers=self.headers)
+            self.online = json.loads(resp.text)['msg'] == 'Successful'
+            if self.online:
+                return self.online
+            else:
+                print(f'用户{username}的cookie已经失效')
+        else:
+            print(f'{ username}加载cookie失败，重新登录')
             self.session.cookies.set('_dxm_ad_client_id', 'EF5ED1455E6745E01606AB28D81ACD6D7')
             self.session.cookies.set('MYJ_MKTG_fapsc5t4tc', 'JTdCJTdE')
             self.session.cookies.set('Hm_lvt_f8001a3f3d9bf5923f780580eb550c0b', '1763520089')
@@ -104,11 +113,10 @@ class Agent(QObject):
             data = json.loads(resp.text)
             self.cookie_manager.save_cookies_json(self.session, account=username)
             self.online = 'error' not in data
+            if not self.online:
+                print(f'登录失败[username={username}]: {data}')
+                logger.error(f'登录失败[username={username}]: {data}')
             return self.online
-        product_page = f'{ROOT}/{PRODUCT_PAGE}'
-        resp = self.session.post(product_page, headers=self.headers)
-        self.online = json.loads(resp.text)['msg']=='Successful'
-        return self.online
 
     def post(self, url, payload):
         resp = self.session.post(url, data=payload, headers=self.headers)
@@ -227,6 +235,7 @@ class Agent(QObject):
 
     def parse_product_list(self, ids: Set[int]):
         if not self.online:
+            print(f'当前用户{self.username}未登录')
             return [], 0
 
         page_url = f'{ROOT}/{PRODUCT_PAGE}'
