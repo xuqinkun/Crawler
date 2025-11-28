@@ -1218,6 +1218,7 @@ class MainWindow(QWidget):
             # 如果
             if username in self.crawl_workers and self.crawl_workers[username].is_paused:
                 self.resume_worker(username)
+                return
 
             # 创建工作线程和QThread
             self.crawl_workers[username] = CrawlWorker(username=username, agent=agent, logger=logger)
