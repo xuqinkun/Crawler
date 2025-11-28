@@ -115,6 +115,72 @@ class AmazonDatabase:
             print(f"插入商品错误: {e}")
             return False
 
+    def batch_upsert_products_chunked(self, products: list[Product], chunk_size=500):
+        """分块批量插入或更新商品信息"""
+        if not products:
+            return True
+
+        total_count = len(products)
+        success_count = 0
+
+        for i in range(0, total_count, chunk_size):
+            chunk = products[i:i + chunk_size]
+            if self._batch_upsert_chunk(chunk):
+                success_count += len(chunk)
+                print(f"已处理 {i + len(chunk)}/{total_count} 条记录")
+            else:
+                print(f"第 {i // chunk_size + 1} 批处理失败")
+                return False
+
+        print(f"批量插入完成，成功处理 {success_count} 条记录")
+        return True
+
+    def _batch_upsert_chunk(self, products: list[Product]):
+        """处理单个数据块"""
+        try:
+            product_data = []
+            for product in products:
+                product_data.append((
+                    product.product_id,
+                    product.asin,
+                    product.url,
+                    product.price,
+                    product.used,
+                    product.shipping_from_amazon,
+                    product.shipping_cost,
+                    product.availability,
+                    product.owner,
+                    product.completed,
+                    product.invalid,
+                ))
+
+            self.cursor.executemany('''
+            INSERT INTO product 
+            (product_id, asin, url, price, used, shipping_from_amazon, shipping_cost, 
+             availability, owner, completed, invalid)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(product_id) DO UPDATE SET
+                asin = COALESCE(excluded.asin, asin),
+                url = COALESCE(excluded.url, url),
+                price = COALESCE(excluded.price, price),
+                used = COALESCE(excluded.used, used),
+                shipping_from_amazon = COALESCE(excluded.shipping_from_amazon, shipping_from_amazon),
+                shipping_cost = COALESCE(excluded.shipping_cost, shipping_cost),
+                availability = COALESCE(excluded.availability, availability),
+                owner = COALESCE(excluded.owner, owner),
+                completed = COALESCE(excluded.completed, completed),
+                invalid = COALESCE(excluded.invalid, invalid),
+                updated_at = CURRENT_TIMESTAMP
+            ''', product_data)
+
+            self.conn.commit()
+            return True
+
+        except sqlite3.Error as e:
+            print(f"批量插入数据块错误: {e}")
+            self.conn.rollback()
+            return False
+
     def update_product_dynamic(self, product):
         """动态构建UPDATE语句，只更新有值的字段"""
         update_fields = []
@@ -187,13 +253,13 @@ class AmazonDatabase:
         except sqlite3.Error as e:
             print(f"获取爬取状态错误: {e}")
 
-    def get_product_uncompleted(self):
+    def get_product_uncompleted(self, owner: str):
         """获取爬取状态"""
         try:
             self.cursor.execute('''
                 SELECT id, product_id, url FROM product
-                where completed = 0;
-            ''')
+                where completed = 0 and owner=?;
+            ''', (owner,))
             rows = self.cursor.fetchall()
             products = []
             for row in rows:

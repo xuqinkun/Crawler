@@ -82,23 +82,22 @@ class CrawlWorker(QObject):
         ids = set([p.product_id for p in all_saved_products])
         new_products, total_items = self.agent.parse_product_list(ids=ids)
 
-        self.log_updated.emit(self.username, f"[开始] {self.username} 共获取{total_items}个链接")
+        self.status_updated.emit(self.username, f"共获取{total_items}个链接")
 
         # 检查是否被暂停
         self.wait_if_paused()
         if self.is_stopped:
             return
-        for p in new_products:
-            p.owner = self.username
-            db.upsert_product(p)
+        db.batch_upsert_products_chunked(new_products)
         self.log_updated.emit(self.username, f"[开始] {self.username} 开始执行爬取任务")
         self.total_num = total_items
-        product_uncompleted = db.get_product_uncompleted()
+        product_uncompleted = db.get_product_uncompleted(self.username)
         self.completed_num = self.total_num - len(product_uncompleted)
         if self.get_progress() > 0:
             self.progress_updated.emit(self.username, '爬取中', self.get_progress())
         session = requests.Session()
         session.cookies.update(amazon_cookies)
+        completed_products = []
         while self.completed_num < self.total_num:
             product = product_uncompleted.pop()
             product_id = product.product_id
@@ -119,7 +118,10 @@ class CrawlWorker(QObject):
                     return
 
                 if data.completed:
-                    db.upsert_product(data)
+                    completed_products.append(data)
+                    if len(completed_products) == 50:
+                        db.batch_upsert_products_chunked(completed_products)
+                        completed_products.clear()
                     self.completed_num += 1
                 self.progress_updated.emit(self.username, '爬取中', self.get_progress())
             except Exception as e:
@@ -128,7 +130,8 @@ class CrawlWorker(QObject):
                 print(error_msg)
                 self.logger.error(error_msg)
                 product_uncompleted.insert(0, product)
-
+        if len(completed_products) > 0:
+            db.batch_upsert_products_chunked(completed_products)
         # 完成任务
         if self.completed_num == self.total_num:
             self.progress_updated.emit(self.username, '已完成', 100)
