@@ -83,6 +83,9 @@ class CrawlWorker(QObject):
         new_products, total_items = self.agent.parse_product_list(ids=ids)
 
         self.status_updated.emit(self.username, f"共获取{total_items}个链接")
+        if total_items == 0:
+            self.status_updated.emit(self.username, "无法获取产品链接")
+            return
 
         # 检查是否被暂停
         self.wait_if_paused()
