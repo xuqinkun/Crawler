@@ -127,12 +127,8 @@ class AmazonDatabase:
             chunk = products[i:i + chunk_size]
             if self._batch_upsert_chunk(chunk):
                 success_count += len(chunk)
-                print(f"已处理 {i + len(chunk)}/{total_count} 条记录")
             else:
-                print(f"第 {i // chunk_size + 1} 批处理失败")
                 return False
-
-        print(f"批量插入完成，成功处理 {success_count} 条记录")
         return True
 
     def _batch_upsert_chunk(self, products: list[Product]):
