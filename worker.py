@@ -99,7 +99,6 @@ class CrawlWorker(QObject):
             self.progress_updated.emit(self.username, '爬取中', self.get_progress())
         session = requests.Session()
         session.cookies.update(amazon_cookies)
-        err_count = {}
         while self.completed_num < self.total_num:
             product = product_uncompleted.pop()
             product_id = product.product_id
@@ -122,15 +121,12 @@ class CrawlWorker(QObject):
                 if data.completed:
                     db.upsert_product(data)
                     self.completed_num += 1
-                self.log_updated.emit(self.username, f""
-                                                     f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {product.url} 解析完成")
                 self.progress_updated.emit(self.username, '爬取中', self.get_progress())
             except Exception as e:
                 error_msg = f"爬取过程中发生错误: {product.url} {str(e)}"
                 self.log_updated.emit(self.username, error_msg)
                 print(error_msg)
                 self.logger.error(error_msg)
-                err_count[product_id] = err_count.get(product_id, 0) + 1
                 product_uncompleted.insert(0, product)
 
         # 完成任务
