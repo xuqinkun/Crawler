@@ -124,6 +124,10 @@ class Agent(QObject):
 
     def start_craw(self, url: str, session: requests.Session) -> Product:
         product = Product()
+        if url is None:
+            product.invalid = True
+            product.completed = True
+            return product
         main_page = session.get(url, headers=self.headers, cookies=amazon_cookies)
         if main_page.status_code != 200:
             print(f'{url} 链接失效, 状态码={main_page.status_code}')
