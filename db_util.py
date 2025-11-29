@@ -8,7 +8,7 @@ from util import ensure_dir_exists
 
 
 class AmazonDatabase:
-    def __init__(self, db_name=".cache/db/amazon_products.db"):
+    def __init__(self, db_name=".cache/db/amazon_products(2).db"):
         ensure_dir_exists(Path(db_name).parent)
         self.db_name = db_name
         self.conn = None

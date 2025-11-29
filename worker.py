@@ -104,6 +104,9 @@ class CrawlWorker(QObject):
         while self.completed_num < self.total_num:
             product = product_uncompleted.pop()
             product_id = product.product_id
+            if product.url is None:
+                print(f'产品{product_id}的链接为空')
+                continue
             try:
                 if self.is_stopped:
                     self.log_updated.emit(self.username, f"[中断] {self.username} 爬取任务被中断")
