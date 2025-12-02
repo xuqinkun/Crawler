@@ -115,6 +115,18 @@ class AmazonDatabase:
             print(f"插入商品错误: {e}")
             return False
 
+    def batch_delete_products_by_ids(self, product_ids: List[str]):
+        """批量删除商品信息"""
+        try:
+            self.cursor.executemany('''
+            DELETE FROM product WHERE product_id = ?
+            ''', [(product_id,) for product_id in product_ids])
+            self.conn.commit()
+            return True
+        except sqlite3.Error as e:
+            print(f"批量删除商品错误: {e}")
+            return False
+
     def batch_upsert_products_chunked(self, products: list[Product], chunk_size=500):
         """分块批量插入或更新商品信息"""
         if not products:
@@ -279,7 +291,7 @@ class AmazonDatabase:
             products = []
             for row in rows:
                 product = Product(
-                    product_id=row['product_id'],
+                    product_id=int(row['product_id']),
                     asin=row['asin'],
                     url=row['url'],
                     price=row['price'],

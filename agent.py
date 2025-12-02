@@ -263,20 +263,21 @@ class Agent(QObject):
         total_pages = page['totalPage']
         total_items = page['totalSize']
 
-        products = []
-        if len(ids) < total_items:
-            for page_no in range(1, total_pages + 1):
-                payload['pageNo'] = page_no
-                response = self.post(page_url, payload)
-                pages = json.loads(response)
-                page = pages['data']['page']
-                for item in page['list']:
-                    product_id = item['id']
-                    if product_id in ids:
-                        continue
-                    product = Product(product_id=product_id, url=item['sourceUrl'])
-                    products.append(product)
-        return products, total_items
+        products_in_web = []
+        for page_no in range(1, total_pages + 1):
+            payload['pageNo'] = page_no
+            response = self.post(page_url, payload)
+            pages = json.loads(response)
+            page = pages['data']['page']
+            for item in page['list']:
+                product_id = item['id']
+                product = Product(product_id=product_id, url=item['sourceUrl'])
+                product.owner = self.username
+                products_in_web.append(product)
+        new_products = [p for p in products_in_web if p.product_id not in ids]
+        realtime_product_ids = [p.product_id for p in products_in_web]
+        expired_product_ids = [pid for pid in ids if pid not in realtime_product_ids]
+        return expired_product_ids, new_products, total_items
 
 
 if __name__ == '__main__':

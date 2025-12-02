@@ -79,8 +79,13 @@ class CrawlWorker(QObject):
             return
 
         all_saved_products = db.get_all_products(self.username)
+        print(f'已保存产品数:{len(all_saved_products)}')
         ids = set([p.product_id for p in all_saved_products])
-        new_products, total_items = self.agent.parse_product_list(ids=ids)
+        expired_product_ids, new_products, total_items = self.agent.parse_product_list(ids=ids)
+        if expired_product_ids:
+            print(f'{len(expired_product_ids)} 个商品已经失效')
+            self.log_updated.emit(self.username, f"[开始] {self.username} 删除失效商品")
+            db.batch_delete_products_by_ids(expired_product_ids)
 
         self.status_updated.emit(self.username, f"共获取{total_items}个链接")
         if total_items <= 0:
@@ -91,10 +96,14 @@ class CrawlWorker(QObject):
         self.wait_if_paused()
         if self.is_stopped:
             return
-        db.batch_upsert_products_chunked(new_products)
+        if new_products:
+            print(f'新增加{len(new_products)} 个商品')
+            db.batch_upsert_products_chunked(new_products)
         self.log_updated.emit(self.username, f"[开始] {self.username} 开始执行爬取任务")
         self.total_num = total_items
+        print(f'商品总数:{total_items}')
         product_uncompleted = db.get_product_uncompleted(self.username)
+        print(f'未解析完成的商品数:{len(product_uncompleted)}')
         self.completed_num = self.total_num - len(product_uncompleted)
         if self.get_progress() > 0:
             self.progress_updated.emit(self.username, '爬取中', self.get_progress())
