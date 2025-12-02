@@ -76,9 +76,12 @@ class Agent(QObject):
         if valid:
             product_page = f'{ROOT}/{PRODUCT_PAGE}'
             resp = self.session.post(product_page, headers=self.headers)
-            self.online = json.loads(resp.text)['msg'] == 'Successful'
+            data = json.loads(resp.text)
+            self.online = data['msg'] == 'Successful'
             if self.online:
                 return self.online
+            else:
+                print(data['msg'])
         print(f'{ username}加载cookie失败，重新登录')
         self.session.cookies.set('_dxm_ad_client_id', 'EF5ED1455E6745E01606AB28D81ACD6D7')
         self.session.cookies.set('MYJ_MKTG_fapsc5t4tc', 'JTdCJTdE')
