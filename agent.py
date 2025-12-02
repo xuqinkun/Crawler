@@ -79,44 +79,41 @@ class Agent(QObject):
             self.online = json.loads(resp.text)['msg'] == 'Successful'
             if self.online:
                 return self.online
-            else:
-                print(f'用户{username}的cookie已经失效')
-        else:
-            print(f'{ username}加载cookie失败，重新登录')
-            self.session.cookies.set('_dxm_ad_client_id', 'EF5ED1455E6745E01606AB28D81ACD6D7')
-            self.session.cookies.set('MYJ_MKTG_fapsc5t4tc', 'JTdCJTdE')
-            self.session.cookies.set('Hm_lvt_f8001a3f3d9bf5923f780580eb550c0b', '1763520089')
-            self.session.cookies.set('Hm_lpvt_f8001a3f3d9bf5923f780580eb550c0b', '1763520789')
-            self.session.cookies.set('tfstk',
-            'g69ibNvtcC5syNy_smXssb8KNHcK6O6f7EeAktQqTw7QWPe90iDDkeUvXf69nxbHlNCOQReciw8CDKn1MeXDRe8cGc_AuZYv0CnKeYK6ft6qn4H-ew9J1yd0QZPZ0vScnGRo2uJBft6qJkeqwYx6W1iWANWqx9ScjZWV_skFTwsY_Z8V76zFqg6VuE8VTwSRVrzaQZrUYwsV3Z8V3DxFRiXVuEWqxHllHR7y3p9Elv2jyqWZdQjGsa-N7hKpLJ141nb33-JHt_Qrow243pjw0MGGM8cAzQ_Owa8EpRXDYiYOJUkzK95kNnIDSA2NBBRBCOpKru1Mowfyp64a_gXGS_JNOly2AsRHKOpZl7tpxN5lpBhIWsBMSQ_5_XgBoHb9udfUS2QvwHpNtUuLKE1DNnIDSA2wzgWuT7uoC-sEDpPbG1SCxapyAdO5PQkrhDm3Nt1NAG3-xDVbG1SCxannx7Of_Msty')
+        print(f'{ username}加载cookie失败，重新登录')
+        self.session.cookies.set('_dxm_ad_client_id', 'EF5ED1455E6745E01606AB28D81ACD6D7')
+        self.session.cookies.set('MYJ_MKTG_fapsc5t4tc', 'JTdCJTdE')
+        self.session.cookies.set('Hm_lvt_f8001a3f3d9bf5923f780580eb550c0b', '1763520089')
+        self.session.cookies.set('Hm_lpvt_f8001a3f3d9bf5923f780580eb550c0b', '1763520789')
+        self.session.cookies.set('tfstk',
+        'g69ibNvtcC5syNy_smXssb8KNHcK6O6f7EeAktQqTw7QWPe90iDDkeUvXf69nxbHlNCOQReciw8CDKn1MeXDRe8cGc_AuZYv0CnKeYK6ft6qn4H-ew9J1yd0QZPZ0vScnGRo2uJBft6qJkeqwYx6W1iWANWqx9ScjZWV_skFTwsY_Z8V76zFqg6VuE8VTwSRVrzaQZrUYwsV3Z8V3DxFRiXVuEWqxHllHR7y3p9Elv2jyqWZdQjGsa-N7hKpLJ141nb33-JHt_Qrow243pjw0MGGM8cAzQ_Owa8EpRXDYiYOJUkzK95kNnIDSA2NBBRBCOpKru1Mowfyp64a_gXGS_JNOly2AsRHKOpZl7tpxN5lpBhIWsBMSQ_5_XgBoHb9udfUS2QvwHpNtUuLKE1DNnIDSA2wzgWuT7uoC-sEDpPbG1SCxapyAdO5PQkrhDm3Nt1NAG3-xDVbG1SCxannx7Of_Msty')
 
-            myj = {"deviceId": "708e8b72-0a46-49c0-beb9-fe5a77efb999",
-                   "userId": "",
-                   "parentId": "",
-                   "sessionId": curr_milliseconds(),
-                   "optOut": False,
-                   "lastEventId": 0}
-            myj_text = json.dumps(myj)
-            self.session.cookies.set('MYJ_fapsc5t4tc', base64_encode(quote(myj_text)))
-            ts = curr_milliseconds()
-            payload = {
-                'account': get_encrypt_by_str(username, ts),
-                'password': get_encrypt_by_str(password, ts),
-                'dxmVerify': captcha,
-                'loginVerifyCode': None,
-                "loginRedUrl": "",
-                "remeber": "remeber",
-                "url": ""
-            }
-            login_url = f'{ROOT}/{LOGIN_PAGE}'
-            resp = self.session.post(login_url, data=payload, headers=self.headers)
-            data = json.loads(resp.text)
-            self.cookie_manager.save_cookies_json(self.session, account=username)
-            self.online = 'error' not in data
-            if not self.online:
-                print(f'登录失败[username={username}]: {data}')
-                logger.error(f'登录失败[username={username}]: {data}')
-            return self.online
+        myj = {"deviceId": "708e8b72-0a46-49c0-beb9-fe5a77efb999",
+               "userId": "",
+               "parentId": "",
+               "sessionId": curr_milliseconds(),
+               "optOut": False,
+               "lastEventId": 0}
+        myj_text = json.dumps(myj)
+        self.session.cookies.set('MYJ_fapsc5t4tc', base64_encode(quote(myj_text)))
+        ts = curr_milliseconds()
+        payload = {
+            'account': get_encrypt_by_str(username, ts),
+            'password': get_encrypt_by_str(password, ts),
+            'dxmVerify': captcha,
+            'loginVerifyCode': None,
+            "loginRedUrl": "",
+            "remeber": "remeber",
+            "url": ""
+        }
+        login_url = f'{ROOT}/{LOGIN_PAGE}'
+        resp = self.session.post(login_url, data=payload, headers=self.headers)
+        data = json.loads(resp.text)
+        self.cookie_manager.save_cookies_json(self.session, account=username)
+        self.online = 'error' not in data
+        if not self.online:
+            print(f'登录失败[username={username}]: {data}')
+            logger.error(f'登录失败[username={username}]: {data}')
+        return self.online
 
     def post(self, url, payload):
         resp = self.session.post(url, data=payload, headers=self.headers)
