@@ -157,12 +157,18 @@ class Agent(QObject):
                 product.used = True
                 product.completed = True
                 return product
+        partial_state_box = main_soup.select_one('div#partialStateBuybox')
+        if partial_state_box:
+            product.completed = True
+            product.invalid = True
+            return product
         new_product_div = main_soup.select_one('div[id^="newAccordionRow_"]')
         if new_product_div is None:
             buy_box_div = main_soup.select_one('#buybox')
             availability_span = buy_box_div.select_one('#availability > span')
             if availability_span is None:
                 product.availability = False
+                product.completed = True
             else:
                 product.availability = 'in stock' in availability_span.text.lower()
                 if product.availability:

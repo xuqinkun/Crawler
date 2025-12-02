@@ -1421,6 +1421,11 @@ class MainWindow(QWidget):
                 if status_label:
                     if progress > 0:
                         status_label.setText(f'{status} {progress:.2f}%')
+                        if status == '结束':
+                            if progress == 100.0:
+                                self.handle_crawl_finished(username)
+                            else:
+                                self.pause_worker(username)
                     else:
                         status_label.setText(f'{status}')
                     status_label.setStyleSheet(f"font-size: 12px; color: {color}; font-weight: bold;")

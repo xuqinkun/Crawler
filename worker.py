@@ -122,7 +122,7 @@ class CrawlWorker(QObject):
                 if self.is_stopped:
                     return
                 data = self.agent.start_craw(url=product.url, session=session)
-                data.product_id = product_id
+                data.product_id = int(product_id)
                 # 更新进度
                 # 检查是否暂停
                 self.wait_if_paused()
@@ -135,6 +135,8 @@ class CrawlWorker(QObject):
                         db.batch_upsert_products_chunked(completed_products)
                         completed_products.clear()
                     self.completed_num += 1
+                else:
+                    print(f'链接{product.url} 解析失败')
                 self.progress_updated.emit(self.username, '爬取中', self.get_progress())
             except Exception as e:
                 error_msg = f"爬取过程中发生错误: {product.url} {str(e)}"
@@ -145,10 +147,8 @@ class CrawlWorker(QObject):
         if len(completed_products) > 0:
             db.batch_upsert_products_chunked(completed_products)
         # 完成任务
-        self.progress_updated.emit(self.username, '已完成', self.get_progress())
-        self.status_updated.emit(self.username, "已完成")
-        self.log_updated.emit(self.username, f"[完成] {self.username} 爬取任务已完成")
-        self.finished.emit(self.username)
+        self.progress_updated.emit(self.username, '结束', self.get_progress())
+        # self.finished.emit(self.username)
 
     def stop(self):
         """停止爬取任务"""
