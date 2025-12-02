@@ -164,7 +164,8 @@ class Agent(QObject):
                 product.availability = 'in stock' in availability_span.text.lower()
                 if product.availability:
                     price_span = buy_box_div.select_one('#corePrice_feature_div > div > div > span.a-price.aok-align-center > span.a-offscreen')
-                    product.price = float(price_span.text[1:].replace(',', ''))
+                    if price_span:
+                        product.price = float(price_span.text[1:].replace(',', ''))
                     delivery_tag = buy_box_div.select_one(
                         '#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE > span')
                     if delivery_tag is None:
