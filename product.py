@@ -8,9 +8,10 @@ class Product():
     爬取的是  正常价格+运费，不能有二手，是否是亚马逊发货，有无库存，价格，品牌黑名单，ASIN黑名单，这是爬取到的数据用EXECL表格展示
 
     """
-    product_id: int = None
+    product_id: str = None
     asin: str = None
     url: str = None
+    title: str = None
     used: bool = None
     price: float = None
     shipping_cost: str = None

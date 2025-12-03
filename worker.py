@@ -122,7 +122,7 @@ class CrawlWorker(QObject):
                 if self.is_stopped:
                     return
                 data = self.agent.start_craw(url=product.url, session=session)
-                data.product_id = int(product_id)
+                data.product_id = product_id
                 # 更新进度
                 # 检查是否暂停
                 self.wait_if_paused()

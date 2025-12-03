@@ -291,8 +291,9 @@ class AmazonDatabase:
             products = []
             for row in rows:
                 product = Product(
-                    product_id=int(row['product_id']),
+                    product_id=row['product_id'],
                     asin=row['asin'],
+                    title=row['title'],
                     url=row['url'],
                     price=row['price'],
                     invalid=row['invalid'],

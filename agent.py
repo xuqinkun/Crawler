@@ -276,8 +276,9 @@ class Agent(QObject):
             pages = json.loads(response)
             page = pages['data']['page']
             for item in page['list']:
-                product_id = item['id']
+                product_id = item['productId']
                 product = Product(product_id=product_id, url=item['sourceUrl'])
+                product.title = item['subject']
                 product.owner = self.username
                 products_in_web.append(product)
         new_products = [p for p in products_in_web if p.product_id not in ids]
