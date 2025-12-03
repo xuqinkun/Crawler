@@ -13,6 +13,7 @@ from crypto import get_encrypt_by_str, base64_encode
 from extractor import AmazonASINExtractor
 from logger import setup_concurrent_logging
 from product import Product
+import concurrent.futures
 from util import curr_milliseconds, ensure_dir_exists
 
 # 使用示例
@@ -247,7 +248,7 @@ class Agent(QObject):
     def parse_product_list(self, ids: Set[int]):
         if not self.online:
             print(f'当前用户{self.username}未登录')
-            return [], 0
+            return [], [], 0
 
         page_url = f'{ROOT}/{PRODUCT_PAGE}'
         payload = {
@@ -263,27 +264,59 @@ class Agent(QObject):
             'sortValue': 2,
             'sortName': 13,
         }
+
+        # 先获取第一页，得到总页数信息
         response = self.post(page_url, payload)
         pages = json.loads(response)
         page = pages['data']['page']
         total_pages = page['totalPage']
         total_items = page['totalSize']
 
+        # 准备多线程获取所有页面的数据
+        def fetch_page(page_no: int):
+            """获取单页数据的函数"""
+            try:
+                page_payload = payload.copy()
+                page_payload['pageNo'] = page_no
+                response = self.post(page_url, page_payload)
+                pages_data = json.loads(response)
+                page_data = pages_data['data']['page']
+                return page_no, page_data['list']
+            except Exception as e:
+                print(f"获取第 {page_no} 页数据失败: {e}")
+                return page_no, []
+
+        # 使用线程池并行获取所有页面
         products_in_web = []
-        for page_no in range(1, total_pages + 1):
-            payload['pageNo'] = page_no
-            response = self.post(page_url, payload)
-            pages = json.loads(response)
-            page = pages['data']['page']
-            for item in page['list']:
-                product_id = item['productId']
-                product = Product(product_id=product_id, url=item['sourceUrl'])
-                product.title = item['subject']
-                product.owner = self.username
-                products_in_web.append(product)
+
+        # 设置合适的线程数，可根据实际情况调整
+        max_workers = min(10, total_pages)  # 最多10个线程
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有页面获取任务
+            future_to_page = {
+                executor.submit(fetch_page, page_no): page_no
+                for page_no in range(1, total_pages + 1)
+            }
+
+            # 按完成顺序处理结果
+            for future in concurrent.futures.as_completed(future_to_page):
+                page_no = future_to_page[future]
+                try:
+                    page_no, items = future.result()
+                    for item in items:
+                        product_id = item['productId']
+                        product = Product(product_id=product_id, url=item['sourceUrl'])
+                        product.title = item['subject']
+                        product.owner = self.username
+                        products_in_web.append(product)
+                except Exception as e:
+                    print(f"处理第 {page_no} 页数据时出错: {e}")
+
+        # 处理结果
         new_products = [p for p in products_in_web if p.product_id not in ids]
         realtime_product_ids = [p.product_id for p in products_in_web]
         expired_product_ids = [pid for pid in ids if pid not in realtime_product_ids]
+
         return expired_product_ids, new_products, total_items
 
 

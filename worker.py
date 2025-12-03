@@ -83,7 +83,7 @@ class CrawlWorker(QObject):
         ids = set([p.product_id for p in all_saved_products])
         expired_product_ids, new_products, total_items = self.agent.parse_product_list(ids=ids)
         if expired_product_ids:
-            print(f'{len(expired_product_ids)} 个商品已经失效')
+            print(f'{len(expired_product_ids)}个商品已经失效')
             self.log_updated.emit(self.username, f"[开始] {self.username} 删除失效商品")
             db.batch_delete_products_by_ids(expired_product_ids)
 

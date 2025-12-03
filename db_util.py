@@ -152,6 +152,7 @@ class AmazonDatabase:
                     product.product_id,
                     product.asin,
                     product.url,
+                    product.title,
                     product.price,
                     product.used,
                     product.shipping_from_amazon,
@@ -164,12 +165,13 @@ class AmazonDatabase:
 
             self.cursor.executemany('''
             INSERT INTO product 
-            (product_id, asin, url, price, used, shipping_from_amazon, shipping_cost, 
+            (product_id, asin, url, title, price, used, shipping_from_amazon, shipping_cost, 
              availability, owner, completed, invalid)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(product_id) DO UPDATE SET
                 asin = COALESCE(excluded.asin, asin),
                 url = COALESCE(excluded.url, url),
+                title = COALESCE(excluded.title, title),
                 price = COALESCE(excluded.price, price),
                 used = COALESCE(excluded.used, used),
                 shipping_from_amazon = COALESCE(excluded.shipping_from_amazon, shipping_from_amazon),
