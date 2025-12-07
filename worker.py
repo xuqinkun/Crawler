@@ -187,17 +187,15 @@ class CrawlWorker(QObject):
                 futures = []
                 for product in current_batch:
                     # 为每个线程创建独立的Session
-                    session_copy = requests.Session()
-                    session_copy.cookies.update(amazon_cookies)
-                    session_copy.headers.update(session.headers)
 
-                    future = executor.submit(crawl_single_product, product, session_copy)
+
+                    future = executor.submit(crawl_single_product, product, session)
                     futures.append(future)
 
                 # 收集当前批次的结果
                 for future in concurrent.futures.as_completed(futures):
                     try:
-                        data, product, status = future.result(timeout=3)  # 3s超时
+                        data, product, status = future.result(timeout=10)  # 3s超时
 
                         if status == "success" and data:
                             completed_products.append(data)
