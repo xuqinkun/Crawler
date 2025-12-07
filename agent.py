@@ -188,8 +188,17 @@ class Agent(QObject):
                     if ships_from_span:
                         ships_from = ships_from_span.text.strip()
                     else:
-                        ships_from = ''
-                        print(f'{url} 无法获取货源地信息')
+                        ships_from_new_span = main_soup.select_one('#sellerProfileTriggerId')
+                        if ships_from_new_span:
+                            ships_from = ships_from_new_span.text.strip()
+                        else:
+                            ships_from_span = main_soup.select_one(
+                                '#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
+                            if ships_from_span:
+                                ships_from = ships_from_span.text.strip()
+                            else:
+                                ships_from = ''
+                                print(f'{url} 获取货源地信息失败')
                     sold_by_span = buy_box_div.select_one(
                         '#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover.aok-inline-block')
                     if sold_by_span:

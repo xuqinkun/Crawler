@@ -371,10 +371,12 @@ class AmazonDatabase:
             self.cursor.execute('''
                 DELETE FROM product WHERE owner = ?
             ''', (username,))
-            self.conn.commit()
+            n = self.conn.commit()
+            n = n if n else 0
+            print(f"成功删除{username}的{n}个产品")
             return True
         except sqlite3.Error as e:
-            print(f"删除账户错误: {e}")
+            print(f"删除{username}的产品错误: {e}")
             return  False
 
     def delete_account(self, username):

@@ -123,6 +123,19 @@ class CrawlWorker(QObject):
         session = requests.Session()
         session.cookies.update(amazon_cookies)
 
+        failed_products = self.do_craw_concurrent(db, product_uncompleted, session)
+
+        # 将失败的商品重新放入待处理队列（可选）
+        # 这里可以根据需求决定是否重试失败的商品
+        if failed_products:
+            print(f"有 {len(failed_products)} 个商品爬取失败")
+            self.log_updated.emit(self.username, f"[警告] {len(failed_products)} 个商品爬取失败")
+            self.do_craw_concurrent(db, product_uncompleted, session)
+
+        # 完成任务
+        self.progress_updated.emit(self.username, '结束', self.get_progress())
+
+    def do_craw_concurrent(self, db, product_uncompleted, session):
         def crawl_single_product(product, session_copy):
             """单个产品的爬取任务"""
             try:
@@ -148,11 +161,9 @@ class CrawlWorker(QObject):
         # 使用线程池并发执行
         completed_products = []
         failed_products = []
-
         # 计算需要处理的批次
         total_to_process = len(product_uncompleted)
         processed_count = 0
-
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
             while processed_count < total_to_process and not self.is_stopped:
                 # 检查是否暂停
@@ -186,7 +197,7 @@ class CrawlWorker(QObject):
                 # 收集当前批次的结果
                 for future in concurrent.futures.as_completed(futures):
                     try:
-                        data, product, status = future.result(timeout=60)  # 5分钟超时
+                        data, product, status = future.result(timeout=3)  # 3s超时
 
                         if status == "success" and data:
                             completed_products.append(data)
@@ -224,19 +235,10 @@ class CrawlWorker(QObject):
 
                     # 短暂暂停，避免对数据库造成过大压力
                     time.sleep(0.1)
-
         # 处理剩余的成功商品
         if completed_products:
             db.batch_upsert_products_chunked(completed_products)
-
-        # 将失败的商品重新放入待处理队列（可选）
-        # 这里可以根据需求决定是否重试失败的商品
-        if failed_products:
-            print(f"有 {len(failed_products)} 个商品爬取失败")
-            self.log_updated.emit(self.username, f"[警告] {len(failed_products)} 个商品爬取失败")
-
-        # 完成任务
-        self.progress_updated.emit(self.username, '结束', self.get_progress())
+        return failed_products
 
     def stop(self):
         """停止爬取任务"""
