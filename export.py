@@ -48,7 +48,7 @@ class ExportWorker:
                 if product.completed:
                     product_dict = {
                         '序号': n + 1,
-                        '产品ID': product.product_id,
+                        '产品ID': f'="{product.product_id}"',
                         '链接': product.url,
                         '有无库存': '有' if product.availability else '无',
                         '价格': 'N/A',

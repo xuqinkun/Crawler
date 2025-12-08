@@ -20,7 +20,6 @@ class AmazonDatabase:
             self.conn = sqlite3.connect(self.db_name)
             self.conn.row_factory = sqlite3.Row
             self.cursor = self.conn.cursor()
-            print(f"成功连接到数据库: {self.db_name}")
         except sqlite3.Error as e:
             print(f"数据库连接错误: {e}")
 
@@ -371,9 +370,8 @@ class AmazonDatabase:
             self.cursor.execute('''
                 DELETE FROM product WHERE owner = ?
             ''', (username,))
-            n = self.conn.commit()
-            n = n if n else 0
-            print(f"成功删除{username}的{n}个产品")
+            self.conn.commit()
+            print(f"成功删除{username}的{self.cursor.rowcount}个产品")
             return True
         except sqlite3.Error as e:
             print(f"删除{username}的产品错误: {e}")

@@ -20,6 +20,11 @@ from util import curr_milliseconds, ensure_dir_exists
 extractor = AmazonASINExtractor()
 logger = setup_concurrent_logging()
 
+
+def shipping_from_amazon(ships_from, sold_by):
+    return 'amazon' in ships_from.lower() or 'amazon' in sold_by.lower()
+
+
 class Agent(QObject):
 
     def __init__(self, cache_dir: str = CACHE_DIR):
@@ -171,11 +176,11 @@ class Agent(QObject):
                 product.availability = False
                 product.completed = True
             else:
-                product.availability = 'in stock' in availability_span.text.lower()
-                if product.availability:
+                availability = 'in stock' in availability_span.text.lower()
+                if availability:
                     price_span = buy_box_div.select_one('#corePrice_feature_div > div > div > span.a-price.aok-align-center > span.a-offscreen')
                     if price_span:
-                        product.price = float(price_span.text[1:].replace(',', ''))
+                        product.price = self.extract_price(price_span)
                     delivery_tag = buy_box_div.select_one(
                         '#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE > span')
                     if delivery_tag is None:
@@ -186,18 +191,18 @@ class Agent(QObject):
                         print(f'{url} 无法获取运费信息')
                     ships_from_span = buy_box_div.select_one('#fulfillerInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
                     if ships_from_span:
-                        ships_from = ships_from_span.text.strip()
+                        shipping_from = ships_from_span.text.strip()
                     else:
                         ships_from_new_span = main_soup.select_one('#sellerProfileTriggerId')
                         if ships_from_new_span:
-                            ships_from = ships_from_new_span.text.strip()
+                            shipping_from = ships_from_new_span.text.strip()
                         else:
                             ships_from_span = main_soup.select_one(
                                 '#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
                             if ships_from_span:
-                                ships_from = ships_from_span.text.strip()
+                                shipping_from = ships_from_span.text.strip()
                             else:
-                                ships_from = ''
+                                shipping_from = ''
                                 print(f'{url} 获取货源地信息失败')
                     sold_by_span = buy_box_div.select_one(
                         '#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover.aok-inline-block')
@@ -210,10 +215,32 @@ class Agent(QObject):
                         else:
                             sold_by = ''
                             print(f'{url} 无法获取卖方信息')
-                    if 'amazon' in ships_from.lower() or 'amazon' in sold_by.lower():
-                        product.shipping_from_amazon = True
-                    else:
-                        product.shipping_from_amazon = False
+                    product.shipping_from_amazon = shipping_from_amazon(shipping_from, sold_by)
+                else:
+                    price_feature_div = main_soup.select_one('#corePrice_feature_div')
+                    if price_feature_div:
+                        availability = True
+                        price_span = price_feature_div.select_one('#corePrice_feature_div > div > div > '
+                                                      'span.a-price.aok-align-center > span.a-offscreen')
+                        if price_span:
+                            product.price = self.extract_price(price_span)
+                        delivery_tag = main_soup.select_one(
+                            '#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE > span')
+                        if delivery_tag:
+                            product.shipping_cost = delivery_tag.text.strip().split(' ')[0]
+                        shipping_from_span = main_soup.select_one('#fulfillerInfoFeature_feature_div > '
+                                                              'div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
+                        if shipping_from_span:
+                            shipping_from = shipping_from_span.text.strip()
+                        else:
+                            shipping_from = ''
+                        sold_by_span = main_soup.select_one('#sellerProfileTriggerId')
+                        if sold_by_span:
+                            sold_by = sold_by_span.text.strip()
+                        else:
+                            sold_by = ''
+                        product.shipping_from_amazon = shipping_from_amazon(shipping_from, sold_by)
+                product.availability = availability
                 product.completed = True
         else:
             availability_span = new_product_div.select_one('#availability > span')
@@ -227,7 +254,7 @@ class Agent(QObject):
                 product.invalid = True
                 product.completed = True
                 return product
-            product.price = float(price_span.text[1:].replace(',', ''))
+            product.price = self.extract_price(price_span)
             shipping_info = new_product_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_MEDIUM')
             if shipping_info is None:
                 shipping_info = new_product_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-NO_PROMISE_UPSELL_MESSAGE')
@@ -247,12 +274,13 @@ class Agent(QObject):
             else:
                 sold_by = ''
                 print(f'{url} 获取卖方信息失败')
-            if 'amazon' in shipping_from.lower() or 'amazon' in sold_by.lower():
-                product.shipping_from_amazon = True
-            else:
-                product.shipping_from_amazon = False
+            product.shipping_from_amazon = shipping_from_amazon(shipping_from, sold_by)
             product.completed = True
         return product
+
+    @staticmethod
+    def extract_price(price_span):
+        return float(price_span.text[1:].replace(',', ''))
 
     def parse_product_list(self, ids: Set[int]):
         if not self.online:
@@ -331,7 +359,7 @@ class Agent(QObject):
 
 if __name__ == '__main__':
     agent = Agent()
-    agent.login('2b13257592627')
+    agent.login('13257592627')
     session = requests.session()
-    product = agent.start_craw('https://www.amazon.com/dp/B0BKTC251N', session)
+    product = agent.start_craw('https://www.amazon.com/dp/B0DFKLQW1V', session)
     print(product)
