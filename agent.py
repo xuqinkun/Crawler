@@ -135,7 +135,7 @@ class Agent(QObject):
             product.completed = True
             return product
         main_page = session.get(url, headers=self.headers, cookies=amazon_cookies)
-        if main_page.status_code != 200:
+        if main_page.status_code == 404:
             print(f'{url} 链接失效, 状态码={main_page.status_code}')
             logger.warning(f'{url} 链接失效, 状态码={main_page.status_code}')
             product.completed = True
@@ -361,5 +361,5 @@ if __name__ == '__main__':
     agent = Agent()
     agent.login('13257592627')
     session = requests.session()
-    product = agent.start_craw('https://www.amazon.com/dp/B0DFKLQW1V', session)
+    product = agent.start_craw('https://www.amazon.com/dp/B0DT6XTMHX?th=1', session)
     print(product)
