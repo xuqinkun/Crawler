@@ -142,7 +142,7 @@ class Agent(QObject):
             product.completed = True
             product.invalid = True
             return product
-        elif status_code == 500:
+        elif status_code != 200:
             product.completed = False
             return product
         main_soup = BeautifulSoup(main_page.text, 'html.parser')
@@ -195,7 +195,11 @@ class Agent(QObject):
                     if delivery_tag:
                         product.shipping_cost = delivery_tag.text.strip().split(' ')[0]
                     else:
-                        print(f'{url} 无法获取运费信息')
+                        delivery_tag = buy_box_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-NO_PROMISE_UPSELL_MESSAGE')
+                        if delivery_tag:
+                            product.shipping_cost = delivery_tag.text.strip().split(' ')[0]
+                        else:
+                            print(f'{url} 无法获取运费信息')
                     ships_from_span = buy_box_div.select_one('#fulfillerInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
                     if ships_from_span:
                         shipping_from = ships_from_span.text.strip()
@@ -252,8 +256,8 @@ class Agent(QObject):
         else:
             availability_span = new_product_div.select_one('#availability > span')
             if availability_span is None:
-                print(f'{url} 获取库存信息失败')
-                product.availability = False
+                select_quantity = new_product_div.select_one('#selectQuantity')
+                product.availability = select_quantity is not None
             else:
                 product.availability = 'in stock' in availability_span.text.lower()
             price_span = new_product_div.select_one('#corePrice_feature_div > div > div > div > div > span.a-price.a-text-normal.aok-align-center.reinventPriceAccordionT2 > span.a-offscreen')
@@ -368,5 +372,5 @@ if __name__ == '__main__':
     agent = Agent()
     agent.login('13257592627')
     session = requests.session()
-    product = agent.start_craw('https://www.amazon.com/dp/B0DT6XTMHX?th=1', session)
+    product = agent.start_craw('https://www.amazon.com/dp/B0F2DTDDFV?language=en_US', session)
     print(product)
