@@ -257,7 +257,7 @@ class AmazonAgent(QObject):
             pass
 
         address_span = self.wait.until(EC.presence_of_element_located((By.ID, "glow-ingress-line2")))
-        if not address_span.text.strip().endswith('ZIP_CODE'):
+        if ZIP_CODE not in address_span.text.strip():
             address_span.click()
             address_input = self.wait.until(EC.presence_of_element_located((By.ID, "GLUXZipUpdateInput")))
             address_input.send_keys(ZIP_CODE)

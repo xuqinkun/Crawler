@@ -115,7 +115,8 @@ class CrawlWorker(QObject):
             agent.start_craw(product)
 
             # 使用互斥锁保护共享变量的更新
-            with self.mutex:
+            self.mutex.lock()
+            try:
                 if product.completed:
                     self.completed_num += 1
                     # 更新进度
@@ -127,12 +128,14 @@ class CrawlWorker(QObject):
                     if self.is_running:
                         self.progress_updated.emit(self.username, '爬取中', self.get_progress())
                     return product, False  # Failed/Captcha
-
+            finally:
+                self.mutex.unlock()
         except Exception as e:
             error_msg = f"爬取商品 {product.url} 时发生错误: {str(e)}"
+            print(error_msg)
             self.log_updated.emit(self.username, error_msg)
             self.logger.error(error_msg)
-            return product, False  # Exception
+            return product, False
 
     def run(self):
         """执行爬取任务"""
@@ -202,6 +205,7 @@ class CrawlWorker(QObject):
         total_to_process = len(product_uncompleted)
         processed_count = 0
         # 3. 使用线程池进行并发爬取
+        self.status_updated.emit(self.username, "开始爬取商品")
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(agent_pool)) as executor:
             # 提交任务
             future_to_product = {}
