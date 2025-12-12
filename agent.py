@@ -24,6 +24,8 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.remote.webdriver import WebDriver
 
+ZIP_CODE = '61110'
+
 DRIVER_EXE = r'C:\Users\xqk\AppData\Local\Programs\bitbrowser\比特浏览器.exe'
 # 使用示例
 extractor = AmazonASINExtractor()
@@ -58,7 +60,7 @@ KEY_SUCCESS_SELECTORS_LIST = [
 
 class Agent(QObject):
 
-    def __init__(self, cache_dir: str = CACHE_DIR):
+    def __init__(self, cache_dir: str = CACHE_DIR, driver: WebDriver = None):
         super().__init__()
         self.cache_dir = Path(cache_dir)
         self.cookie_dir = self.cache_dir / 'cookies'
@@ -85,18 +87,17 @@ class Agent(QObject):
         }
 
         # driver 对象启动 Chrome 浏览器
-        self.amazon_driver = webdriver.Chrome(options=chrome_options)
-        self.amazon_driver.set_window_size(1366, 768)
         self.amazon_session = requests.Session()
-
+        self.amazon_driver = driver
         self.wait = WebDriverWait(self.amazon_driver, 10)  # 最大等待 15 秒
         self.shopping_sys_session = requests.Session()
         self.amazon_driver.get("https://www.amazon.com/dp/B0F2DTDDFV?language=en_US")
-        change_address = self.wait.until(EC.presence_of_element_located((By.ID, "glow-ingress-line2")))
-        change_address.click()
-        address_input = self.wait.until(EC.presence_of_element_located((By.ID, "GLUXZipUpdateInput")))
-        address_input.send_keys('61110')
-        self.amazon_driver.find_element(By.CSS_SELECTOR, '#GLUXZipUpdate > span > input').click()
+        address_span = self.wait.until(EC.presence_of_element_located((By.ID, "glow-ingress-line2")))
+        if not address_span.text.strip().endswith('ZIP_CODE'):
+            address_span.click()
+            address_input = self.wait.until(EC.presence_of_element_located((By.ID, "GLUXZipUpdateInput")))
+            address_input.send_keys(ZIP_CODE)
+            self.amazon_driver.find_element(By.CSS_SELECTOR, '#GLUXZipUpdate > span > input').click()
 
         for cookie in self.amazon_driver.get_cookies():
             self.amazon_session.cookies.update(cookie)
@@ -490,7 +491,11 @@ class Agent(QObject):
 
 
 if __name__ == '__main__':
-    agent = Agent()
+    from bit_browser import *
+    ids = get_all_browser_ids()
+    driver = get_bitbrowser_driver(ids[0])
+    agent = Agent(driver=driver)
     agent.login('13257592627')
-    product = agent.start_craw('https://www.amazon.com/dp/B0C46XSMMQ')
-    print(product)
+    p = Product(url='https://www.amazon.com/dp/B0C46XSMMQ')
+    agent.start_craw(p)
+    print(p)

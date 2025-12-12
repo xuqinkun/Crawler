@@ -67,23 +67,20 @@ def get_all_browser_ids():
             data_list = resp.get("data", {}).get("list", [])
             print(f"共找到 {len(data_list)} 个窗口：")
 
-            result = {}
+            result = []
             for item in data_list:
-                name = item.get("name")  # 窗口备注/名称
                 bid = item.get("id")  # 窗口ID (这是我们要的)
-                group_name = item.get("groupName")
-
-                print(f"名称: {name} | ID: {bid} | 分组: {group_name}")
-                result[name] = bid
+                # group_name = item.get("groupName")
+                result.append(bid)
 
             return result
         else:
             print(f"获取列表失败: {resp.get('msg')}")
-            return {}
+            return []
 
     except Exception as e:
         print(f"请求接口出错: {e}")
-        return {}
+        return []
 
 # --- 使用示例 ---
 if __name__ == "__main__":
