@@ -24,12 +24,13 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.remote.webdriver import WebDriver
 
-CHROMEDRIVER_EXE = 'chromedriver.exe'
+DRIVER_EXE = r'C:\Users\xqk\AppData\Local\Programs\bitbrowser\比特浏览器.exe'
 # 使用示例
 extractor = AmazonASINExtractor()
 logger = setup_concurrent_logging()
 chrome_options = Options()
-service = Service(executable_path=CHROMEDRIVER_EXE)
+chrome_options.binary_location = DRIVER_EXE
+service = Service(executable_path=DRIVER_EXE)
 
 def shipping_from_amazon(ships_from, sold_by):
     return 'amazon' in ships_from.lower() or 'amazon' in sold_by.lower()
@@ -84,8 +85,8 @@ class Agent(QObject):
         }
 
         # driver 对象启动 Chrome 浏览器
-        self.amazon_driver = webdriver.Chrome(service=service, options=chrome_options)
-        self.amazon_driver.maximize_window()
+        self.amazon_driver = webdriver.Chrome(options=chrome_options)
+        self.amazon_driver.set_window_size(1366, 768)
         self.amazon_session = requests.Session()
 
         self.wait = WebDriverWait(self.amazon_driver, 10)  # 最大等待 15 秒
