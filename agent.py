@@ -174,7 +174,7 @@ class Agent(QObject):
         resp = self.shopping_sys_session.post(url, data=payload, headers=self.headers)
         return resp.text
 
-    def start_craw(self, url):
+    def start_craw(self, product: Product) -> Product:
         """
         使用 Selenium 获取页面内容并进行解析。
 
@@ -183,8 +183,8 @@ class Agent(QObject):
         :param logger: 日志对象
         :return: 更新后的 product 对象
         """
-        product = Product()
         # 1. 导航到目标 URL
+        url = product.url
         try:
             self.amazon_driver.get(url)  # 假设 self.amazon_driver 已初始化
         except Exception as e:
@@ -278,6 +278,8 @@ class Agent(QObject):
             product.invalid = True
             return product
         new_product_div = main_soup.select_one('div[id^="newAccordionRow_"]')
+        shipping_from = ''
+        sold_by = ''
         if new_product_div is None:
             buy_box_div = main_soup.select_one('#buybox')
             if buy_box_div:
@@ -399,8 +401,8 @@ class Agent(QObject):
             else:
                 sold_by = ''
                 print(f'{url} 获取卖方信息失败')
-            product.shipping_from_amazon = shipping_from_amazon(shipping_from, sold_by)
-            product.completed = True
+        product.shipping_from_amazon = shipping_from_amazon(shipping_from, sold_by)
+        product.completed = True
         return product
 
     @staticmethod
@@ -489,5 +491,5 @@ class Agent(QObject):
 if __name__ == '__main__':
     agent = Agent()
     agent.login('13257592627')
-    product = agent.start_craw('https://www.amazon.com/dp/B0F2DTDDFV?language=en_US')
+    product = agent.start_craw('https://www.amazon.com/dp/B0C46XSMMQ')
     print(product)
