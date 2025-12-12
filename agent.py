@@ -135,11 +135,15 @@ class Agent(QObject):
             product.completed = True
             return product
         main_page = session.get(url, headers=self.headers, cookies=amazon_cookies)
-        if main_page.status_code == 404:
-            print(f'{url} 链接失效, 状态码={main_page.status_code}')
-            logger.warning(f'{url} 链接失效, 状态码={main_page.status_code}')
+        status_code = main_page.status_code
+        if status_code == 404:
+            print(f'{url} 链接失效, 状态码={status_code}')
+            logger.warning(f'{url} 链接失效, 状态码={status_code}')
             product.completed = True
             product.invalid = True
+            return product
+        elif status_code == 500:
+            product.completed = False
             return product
         main_soup = BeautifulSoup(main_page.text, 'html.parser')
         learn_more_span = main_soup.select_one('#fod-cx-message-with-learn-more > span:nth-child(1)')
@@ -171,7 +175,10 @@ class Agent(QObject):
         new_product_div = main_soup.select_one('div[id^="newAccordionRow_"]')
         if new_product_div is None:
             buy_box_div = main_soup.select_one('#buybox')
-            availability_span = buy_box_div.select_one('#availability > span')
+            if buy_box_div:
+                availability_span = buy_box_div.select_one('#availability > span')
+            else:
+                availability_span = None
             if availability_span is None:
                 product.availability = False
                 product.completed = True
