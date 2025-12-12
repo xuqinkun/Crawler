@@ -1,4 +1,5 @@
 import json
+import time
 from pathlib import Path
 from typing import Set
 from urllib.parse import quote
@@ -60,7 +61,7 @@ KEY_SUCCESS_SELECTORS_LIST = [
 
 class Agent(QObject):
 
-    def __init__(self, cache_dir: str = CACHE_DIR, driver: WebDriver = None):
+    def __init__(self, cache_dir: str = CACHE_DIR):
         super().__init__()
         self.cache_dir = Path(cache_dir)
         self.cookie_dir = self.cache_dir / 'cookies'
@@ -85,22 +86,7 @@ class Agent(QObject):
             'Sec-Fetch-Site': 'same-origin',
             'Priority': 'u=1, i'
         }
-
-        # driver 对象启动 Chrome 浏览器
-        self.amazon_session = requests.Session()
-        self.amazon_driver = driver
-        self.wait = WebDriverWait(self.amazon_driver, 10)  # 最大等待 15 秒
         self.shopping_sys_session = requests.Session()
-        self.amazon_driver.get("https://www.amazon.com/dp/B0F2DTDDFV?language=en_US")
-        address_span = self.wait.until(EC.presence_of_element_located((By.ID, "glow-ingress-line2")))
-        if not address_span.text.strip().endswith('ZIP_CODE'):
-            address_span.click()
-            address_input = self.wait.until(EC.presence_of_element_located((By.ID, "GLUXZipUpdateInput")))
-            address_input.send_keys(ZIP_CODE)
-            self.amazon_driver.find_element(By.CSS_SELECTOR, '#GLUXZipUpdate > span > input').click()
-
-        for cookie in self.amazon_driver.get_cookies():
-            self.amazon_session.cookies.update(cookie)
         self.online = False
         self.username = None
 
@@ -175,6 +161,110 @@ class Agent(QObject):
     def post(self, url, payload):
         resp = self.shopping_sys_session.post(url, data=payload, headers=self.headers)
         return resp.text
+
+
+    def parse_product_list(self, ids: Set[int]):
+        if not self.online:
+            print(f'当前用户{self.username}未登录')
+            return [], [], 0
+
+        page_url = f'{ROOT}/{PRODUCT_PAGE}'
+        payload = {
+            'pageNo': 1,
+            'pageSize': 100,
+            'total': 0,
+            'searchType': 0,
+            'searchValue': None,
+            'shopId': -1,
+            'dxmState': 'online',
+            'dxmOfflineState': None,
+            'productStatusType': 'onSelling',
+            'sortValue': 2,
+            'sortName': 13,
+        }
+
+        # 先获取第一页，得到总页数信息
+        response = self.post(page_url, payload)
+        pages = json.loads(response)
+        page = pages['data']['page']
+        total_pages = page['totalPage']
+        total_items = page['totalSize']
+
+        # 准备多线程获取所有页面的数据
+        def fetch_page(page_no: int):
+            """获取单页数据的函数"""
+            try:
+                page_payload = payload.copy()
+                page_payload['pageNo'] = page_no
+                response = self.post(page_url, page_payload)
+                pages_data = json.loads(response)
+                page_data = pages_data['data']['page']
+                return page_no, page_data['list']
+            except Exception as e:
+                print(f"获取第 {page_no} 页数据失败: {e}")
+                return page_no, []
+
+        # 使用线程池并行获取所有页面
+        products_in_web = []
+
+        # 设置合适的线程数，可根据实际情况调整
+        max_workers = min(10, total_pages)  # 最多10个线程
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有页面获取任务
+            future_to_page = {
+                executor.submit(fetch_page, page_no): page_no
+                for page_no in range(1, total_pages + 1)
+            }
+
+            # 按完成顺序处理结果
+            for future in concurrent.futures.as_completed(future_to_page):
+                page_no = future_to_page[future]
+                try:
+                    page_no, items = future.result()
+                    for item in items:
+                        product_id = item['productId']
+                        product = Product(product_id=product_id, url=item['sourceUrl'])
+                        product.title = item['subject']
+                        product.owner = self.username
+                        products_in_web.append(product)
+                except Exception as e:
+                    print(f"处理第 {page_no} 页数据时出错: {e}")
+
+        # 处理结果
+        new_products = [p for p in products_in_web if p.product_id not in ids]
+        realtime_product_ids = [p.product_id for p in products_in_web]
+        expired_product_ids = [pid for pid in ids if pid not in realtime_product_ids]
+
+        return expired_product_ids, new_products, total_items
+
+
+class AmazonAgent(QObject):
+    def __init__(self, driver: WebDriver):
+        super().__init__()
+        # driver 对象启动 Chrome 浏览器
+        self.amazon_session = requests.Session()
+        self.amazon_driver = driver
+        self.amazon_driver.maximize_window()
+        self.wait = WebDriverWait(self.amazon_driver, 10)  # 最大等待 15 秒
+        self.shopping_sys_session = requests.Session()
+        self.amazon_driver.get("https://www.amazon.com/dp/B0F2DTDDFV?language=en_US")
+
+        try:
+            time.sleep(0.5)
+            self.amazon_driver.find_element(By.CSS_SELECTOR, 'body > div > div.a-row.a-spacing-double-large > div.a-section > div > div > form > div > div > span > span > button').click()
+            print(f'Click continue')
+        except Exception:
+            pass
+
+        address_span = self.wait.until(EC.presence_of_element_located((By.ID, "glow-ingress-line2")))
+        if not address_span.text.strip().endswith('ZIP_CODE'):
+            address_span.click()
+            address_input = self.wait.until(EC.presence_of_element_located((By.ID, "GLUXZipUpdateInput")))
+            address_input.send_keys(ZIP_CODE)
+            self.amazon_driver.find_element(By.CSS_SELECTOR, '#GLUXZipUpdate > span > input').click()
+
+        for cookie in self.amazon_driver.get_cookies():
+            self.amazon_session.cookies.update(cookie)
 
     def start_craw(self, product: Product) -> Product:
         """
@@ -411,81 +501,6 @@ class Agent(QObject):
     def extract_price(price_span):
         return float(price_span.text[1:].replace(',', ''))
 
-    def parse_product_list(self, ids: Set[int]):
-        if not self.online:
-            print(f'当前用户{self.username}未登录')
-            return [], [], 0
-
-        page_url = f'{ROOT}/{PRODUCT_PAGE}'
-        payload = {
-            'pageNo': 1,
-            'pageSize': 100,
-            'total': 0,
-            'searchType': 0,
-            'searchValue': None,
-            'shopId': -1,
-            'dxmState': 'online',
-            'dxmOfflineState': None,
-            'productStatusType': 'onSelling',
-            'sortValue': 2,
-            'sortName': 13,
-        }
-
-        # 先获取第一页，得到总页数信息
-        response = self.post(page_url, payload)
-        pages = json.loads(response)
-        page = pages['data']['page']
-        total_pages = page['totalPage']
-        total_items = page['totalSize']
-
-        # 准备多线程获取所有页面的数据
-        def fetch_page(page_no: int):
-            """获取单页数据的函数"""
-            try:
-                page_payload = payload.copy()
-                page_payload['pageNo'] = page_no
-                response = self.post(page_url, page_payload)
-                pages_data = json.loads(response)
-                page_data = pages_data['data']['page']
-                return page_no, page_data['list']
-            except Exception as e:
-                print(f"获取第 {page_no} 页数据失败: {e}")
-                return page_no, []
-
-        # 使用线程池并行获取所有页面
-        products_in_web = []
-
-        # 设置合适的线程数，可根据实际情况调整
-        max_workers = min(10, total_pages)  # 最多10个线程
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # 提交所有页面获取任务
-            future_to_page = {
-                executor.submit(fetch_page, page_no): page_no
-                for page_no in range(1, total_pages + 1)
-            }
-
-            # 按完成顺序处理结果
-            for future in concurrent.futures.as_completed(future_to_page):
-                page_no = future_to_page[future]
-                try:
-                    page_no, items = future.result()
-                    for item in items:
-                        product_id = item['productId']
-                        product = Product(product_id=product_id, url=item['sourceUrl'])
-                        product.title = item['subject']
-                        product.owner = self.username
-                        products_in_web.append(product)
-                except Exception as e:
-                    print(f"处理第 {page_no} 页数据时出错: {e}")
-
-        # 处理结果
-        new_products = [p for p in products_in_web if p.product_id not in ids]
-        realtime_product_ids = [p.product_id for p in products_in_web]
-        expired_product_ids = [pid for pid in ids if pid not in realtime_product_ids]
-
-        return expired_product_ids, new_products, total_items
-
-
     def stop(self):
         self.amazon_driver.close()
 
@@ -494,8 +509,7 @@ if __name__ == '__main__':
     from bit_browser import *
     ids = get_all_browser_ids()
     driver = get_bitbrowser_driver(ids[0])
-    agent = Agent(driver=driver)
-    agent.login('13257592627')
+    agent = AmazonAgent(driver=driver)
     p = Product(url='https://www.amazon.com/dp/B0C46XSMMQ')
     agent.start_craw(p)
     print(p)

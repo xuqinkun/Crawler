@@ -1,15 +1,16 @@
-import time
-import requests
-from PyQt5.QtCore import QObject, pyqtSignal, QWaitCondition, QMutex
 import concurrent.futures
-from concurrent.futures import ThreadPoolExecutor
-from constant import amazon_cookies
-from db_util import AmazonDatabase
+import time
 
+from PyQt5.QtCore import QObject, pyqtSignal, QWaitCondition, QMutex
+from itertools import cycle # 导入循环迭代器
+from agent import AmazonAgent
+from bit_browser import *
+from db_util import AmazonDatabase
 
 # 批量处理大小和并发数配置
 BATCH_SIZE = 100
 MAX_WORKERS = 1  # 并发线程数，可根据网络状况调整
+
 
 class CrawlWorker(QObject):
     """爬取工作线程"""
@@ -32,6 +33,7 @@ class CrawlWorker(QObject):
         self.is_paused = False
         self.is_stopped = False
         self.first_running = True
+        self.agent_pool = []
         # 添加暂停/恢复相关的同步对象
         self.mutex = QMutex()
         self.condition = QWaitCondition()
@@ -64,6 +66,75 @@ class CrawlWorker(QObject):
             # 在等待时发送暂停状态
             self.condition.wait(self.mutex)  # 等待恢复信号
         self.mutex.unlock()
+
+    def _initialize_agent_pool(self) -> list:
+        """初始化并发爬取的 Agent/Driver 实例池"""
+        self.status_updated.emit(self.username, "初始化浏览器池...")
+
+        # 1. 获取所有可用的 BitBrowser ID
+        browser_ids = get_all_browser_ids()
+        if not browser_ids:
+            self.error_occurred.emit(self.username, "未找到任何比特浏览器窗口ID，请先创建或打开窗口。")
+            return []
+
+        # 2. 限制使用的窗口数量为 MAX_WORKERS
+        target_ids = browser_ids[:MAX_WORKERS]
+        self.log_updated.emit(self.username, f"将使用 {len(target_ids)} 个浏览器窗口进行并发爬取。")
+
+        agent_pool = []
+        for i, browser_id in enumerate(target_ids):
+            if self.is_stopped:
+                break
+
+            # 3. 启动窗口并获取 Driver
+            self.log_updated.emit(self.username, f"正在启动浏览器 #{i + 1}/{len(target_ids)} (ID: {browser_id[:8]}...)")
+            driver = get_bitbrowser_driver(browser_id)
+            if driver:
+                try:
+                    # 4. 为每个 Driver 创建一个独立的 Agent 实例
+                    temp_agent = AmazonAgent(driver=driver)
+
+                    # 5. 重新加载登录信息 (使用主 Agent 的用户名)
+                    # 这一步确保新会话也能继承登录和Cookie状态
+                    agent_pool.append(temp_agent)
+                except Exception as e:
+                    self.log_updated.emit(self.username, f"初始化 Agent 失败: {e}")
+                    try:
+                        driver.quit()
+                    except:
+                        pass
+
+        self.agent_pool = agent_pool
+        return agent_pool
+
+    def _crawl_task(self, product, agent: AmazonAgent, db: AmazonDatabase):
+        """单个商品的爬取任务，由线程池调用"""
+        try:
+            self.wait_if_paused()
+            if self.is_stopped:
+                return product, False
+
+            agent.start_craw(product)
+
+            # 使用互斥锁保护共享变量的更新
+            with self.mutex:
+                if product.completed:
+                    self.completed_num += 1
+                    # 更新进度
+                    if self.is_running:
+                        self.progress_updated.emit(self.username, '爬取中', self.get_progress())
+                    return product, True  # Success
+                else:
+                    # 更新进度（即使失败也算处理了一次，但计数器不加）
+                    if self.is_running:
+                        self.progress_updated.emit(self.username, '爬取中', self.get_progress())
+                    return product, False  # Failed/Captcha
+
+        except Exception as e:
+            error_msg = f"爬取商品 {product.url} 时发生错误: {str(e)}"
+            self.log_updated.emit(self.username, error_msg)
+            self.logger.error(error_msg)
+            return product, False  # Exception
 
     def run(self):
         """执行爬取任务"""
@@ -119,54 +190,61 @@ class CrawlWorker(QObject):
         if self.get_progress() > 0 and self.is_running:
             self.progress_updated.emit(self.username, '爬取中', self.get_progress())
 
+        # 1. 初始化 Agent Pool
+        agent_pool = self._initialize_agent_pool()
+        if not agent_pool:
+            self.status_updated.emit(self.username, "并发爬取失败，浏览器初始化错误。")
+            return
+        # 2. 准备任务和 Agent 循环器
+        tasks = list(product_uncompleted)
+        agent_cycle = cycle(agent_pool)  # 循环使用 Agent 实例
         completed_products = []
         failed_products = []
         # 计算需要处理的批次
         total_to_process = len(product_uncompleted)
         processed_count = 0
-        while processed_count < total_to_process and not self.is_stopped:
-            # 检查是否暂停
-            self.wait_if_paused()
-            product = product_uncompleted.pop()
+        # 3. 使用线程池进行并发爬取
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(agent_pool)) as executor:
+            # 提交任务
+            future_to_product = {}
+            for product in tasks:
+                self.wait_if_paused()
+                if self.is_stopped:
+                    break
 
-            try:
-                self.agent.start_craw(product)
-                if product.completed:
+                # 分配一个 Agent
+                agent = next(agent_cycle)
+                future = executor.submit(self._crawl_task, product, agent, db)
+                future_to_product[future] = product
+
+            # 处理结果
+            for future in concurrent.futures.as_completed(future_to_product):
+                if self.is_stopped:
+                    break
+
+                product, success = future.result()
+
+                if success:
                     completed_products.append(product)
-                    self.completed_num += 1
                     # 批量保存已完成的商品
                     if len(completed_products) >= BATCH_SIZE:
                         db.batch_upsert_products_chunked(completed_products)
                         completed_products.clear()
-
-                        # 短暂暂停，避免对数据库造成过大压力
                         time.sleep(0.1)
-                else:
-                    # 发生异常
-                    error_msg = f"爬取过程中发生错误: {product.url}"
-                    self.log_updated.emit(self.username, error_msg)
-                    print(error_msg)
-                    self.logger.error(error_msg)
-                    failed_products.append(product)
+                # 失败的商品会自动保留在数据库中，等待下次重试
 
-                # 更新进度
-                if self.is_running:
-                    self.progress_updated.emit(self.username, '爬取中', self.get_progress())
-
-            except concurrent.futures.TimeoutError:
-                error_msg = f"爬取超时: {product.url}"
-                self.log_updated.emit(self.username, error_msg)
-                print(error_msg)
-                self.logger.error(error_msg)
-                failed_products.append(product)
-            except Exception as e:
-                error_msg = f"处理结果时发生错误: {str(e)}"
-                self.log_updated.emit(self.username, error_msg)
-                print(error_msg)
-                self.logger.error(error_msg)
-        # 处理剩余的成功商品
+        # 4. 处理剩余的成功商品
         if completed_products:
             db.batch_upsert_products_chunked(completed_products)
+
+        # 5. 关闭所有 Agent/Driver
+        self.log_updated.emit(self.username, "爬取结束，正在关闭浏览器窗口...")
+        for agent in self.agent_pool:
+            try:
+                agent.stop()  # Calls self.amazon_driver.close()
+            except Exception as e:
+                self.logger.error(f"关闭浏览器出错: {e}")
+        self.agent_pool.clear()  # 清空池
         # 完成任务
         self.progress_updated.emit(self.username, '结束', self.get_progress())
 
@@ -181,5 +259,17 @@ class CrawlWorker(QObject):
         self.first_running = True
         # 这一步确保在 wait_if_paused() 中阻塞的线程能够跳出等待
         self.condition.wakeAll()
-        self.agent.stop()
         self.mutex.unlock()
+        # 关闭主 Agent
+        try:
+            self.agent.stop()
+        except:
+            pass
+
+        # 尝试关闭所有并发 Agent (如果在运行过程中被外部调用 stop)
+        for agent in self.agent_pool:
+            try:
+                agent.stop()
+            except:
+                pass
+        self.agent_pool.clear()
