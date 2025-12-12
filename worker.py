@@ -9,7 +9,7 @@ from db_util import AmazonDatabase
 
 # 批量处理大小和并发数配置
 BATCH_SIZE = 100
-MAX_WORKERS = 10  # 并发线程数，可根据网络状况调整
+MAX_WORKERS = 1  # 并发线程数，可根据网络状况调整
 
 class CrawlWorker(QObject):
     """爬取工作线程"""
@@ -119,24 +119,20 @@ class CrawlWorker(QObject):
         if self.get_progress() > 0 and self.is_running:
             self.progress_updated.emit(self.username, '爬取中', self.get_progress())
 
-        # 创建线程安全的Session对象
-        session = requests.Session()
-        session.cookies.update(amazon_cookies)
-
-        failed_products = self.do_craw_concurrent(db, product_uncompleted, session)
+        failed_products = self.do_craw_concurrent(db, product_uncompleted)
 
         # 将失败的商品重新放入待处理队列（可选）
         # 这里可以根据需求决定是否重试失败的商品
         if failed_products and not self.is_stopped:
             print(f"有 {len(failed_products)} 个商品爬取失败")
             self.log_updated.emit(self.username, f"[警告] {len(failed_products)} 个商品爬取失败")
-            self.do_craw_concurrent(db, product_uncompleted, session)
+            self.do_craw_concurrent(db, product_uncompleted)
 
         # 完成任务
         self.progress_updated.emit(self.username, '结束', self.get_progress())
 
-    def do_craw_concurrent(self, db, product_uncompleted, session):
-        def crawl_single_product(product, session_copy):
+    def do_craw_concurrent(self, db, product_uncompleted):
+        def crawl_single_product(product):
             """单个产品的爬取任务"""
             try:
                 if self.is_stopped:
@@ -147,7 +143,7 @@ class CrawlWorker(QObject):
                     return None, product, "stopped"
 
                 # 创建Session的副本，避免线程间竞争
-                data = self.agent.start_craw(url=product.url, session=session_copy)
+                data = self.agent.start_craw(url=product.url)
                 data.product_id = product.product_id
 
                 if data.completed:
@@ -185,7 +181,7 @@ class CrawlWorker(QObject):
                 futures = []
                 for product in current_batch:
                     # 为每个线程创建独立的Session
-                    future = executor.submit(crawl_single_product, product, session)
+                    future = executor.submit(crawl_single_product, product)
                     futures.append(future)
 
                 # 收集当前批次的结果
@@ -247,4 +243,5 @@ class CrawlWorker(QObject):
         self.first_running = True
         # 这一步确保在 wait_if_paused() 中阻塞的线程能够跳出等待
         self.condition.wakeAll()
+        self.agent.stop()
         self.mutex.unlock()

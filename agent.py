@@ -6,6 +6,7 @@ from urllib.parse import quote
 import requests
 from PyQt5.QtCore import QObject
 from bs4 import BeautifulSoup
+from selenium.common import TimeoutException
 
 from constant import *
 from cookies import CookieManager
@@ -15,15 +16,44 @@ from logger import setup_concurrent_logging
 from product import Product
 import concurrent.futures
 from util import curr_milliseconds, ensure_dir_exists
+from selenium import webdriver
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.remote.webdriver import WebDriver
 
+CHROMEDRIVER_EXE = 'chromedriver.exe'
 # 使用示例
 extractor = AmazonASINExtractor()
 logger = setup_concurrent_logging()
-
+chrome_options = Options()
+service = Service(executable_path=CHROMEDRIVER_EXE)
 
 def shipping_from_amazon(ships_from, sold_by):
     return 'amazon' in ships_from.lower() or 'amazon' in sold_by.lower()
 
+class any_of_elements_located:
+    def __init__(self, locators):
+        self.locators = locators
+    def __call__(self, driver: WebDriver):
+        for locator in self.locators:
+            try:
+                element = driver.find_element(*locator)
+                if element.is_displayed():
+                    return element
+            except:
+                continue
+        return False
+
+
+# 关键元素定位器列表，用于判断页面是否成功加载
+KEY_SUCCESS_SELECTORS_LIST = [
+    (By.CSS_SELECTOR, "span.a-price > span.a-offscreen"), # 价格
+    (By.ID, "productTitle"), # 标题
+    (By.ID, "dp"), # 主体容器
+]
 
 class Agent(QObject):
 
@@ -52,7 +82,23 @@ class Agent(QObject):
             'Sec-Fetch-Site': 'same-origin',
             'Priority': 'u=1, i'
         }
-        self.session = requests.Session()
+
+        # driver 对象启动 Chrome 浏览器
+        self.amazon_driver = webdriver.Chrome(service=service, options=chrome_options)
+        self.amazon_driver.maximize_window()
+        self.amazon_session = requests.Session()
+
+        self.wait = WebDriverWait(self.amazon_driver, 10)  # 最大等待 15 秒
+        self.shopping_sys_session = requests.Session()
+        self.amazon_driver.get("https://www.amazon.com/dp/B0F2DTDDFV?language=en_US")
+        change_address = self.wait.until(EC.presence_of_element_located((By.ID, "glow-ingress-line2")))
+        change_address.click()
+        address_input = self.wait.until(EC.presence_of_element_located((By.ID, "GLUXZipUpdateInput")))
+        address_input.send_keys('61110')
+        self.amazon_driver.find_element(By.CSS_SELECTOR, '#GLUXZipUpdate > span > input').click()
+
+        for cookie in self.amazon_driver.get_cookies():
+            self.amazon_session.cookies.update(cookie)
         self.online = False
         self.username = None
 
@@ -72,16 +118,16 @@ class Agent(QObject):
     def get_captcha(self):
         ts = curr_milliseconds()
         verify_code_url = f'{ROOT}/{VERIFY_PAGE}?t={ts}'
-        response = self.session.get(verify_code_url)
+        response = self.shopping_sys_session.get(verify_code_url)
         image = response.content
         return image
 
     def login(self, username: str, password: str = '', captcha: str = ''):
         self.username = username
-        valid = self.cookie_manager.load_cookies_json(self.session, username)
+        valid = self.cookie_manager.load_cookies_json(self.shopping_sys_session, username)
         if valid:
             product_page = f'{ROOT}/{PRODUCT_PAGE}'
-            resp = self.session.post(product_page, headers=self.headers)
+            resp = self.shopping_sys_session.post(product_page, headers=self.headers)
             data = json.loads(resp.text)
             self.online = data['msg'] == 'Successful'
             if self.online:
@@ -89,11 +135,11 @@ class Agent(QObject):
             else:
                 print(data['msg'])
         print(f'{ username}加载cookie失败，重新登录')
-        self.session.cookies.set('_dxm_ad_client_id', 'EF5ED1455E6745E01606AB28D81ACD6D7')
-        self.session.cookies.set('MYJ_MKTG_fapsc5t4tc', 'JTdCJTdE')
-        self.session.cookies.set('Hm_lvt_f8001a3f3d9bf5923f780580eb550c0b', '1763520089')
-        self.session.cookies.set('Hm_lpvt_f8001a3f3d9bf5923f780580eb550c0b', '1763520789')
-        self.session.cookies.set('tfstk',
+        self.shopping_sys_session.cookies.set('_dxm_ad_client_id', 'EF5ED1455E6745E01606AB28D81ACD6D7')
+        self.shopping_sys_session.cookies.set('MYJ_MKTG_fapsc5t4tc', 'JTdCJTdE')
+        self.shopping_sys_session.cookies.set('Hm_lvt_f8001a3f3d9bf5923f780580eb550c0b', '1763520089')
+        self.shopping_sys_session.cookies.set('Hm_lpvt_f8001a3f3d9bf5923f780580eb550c0b', '1763520789')
+        self.shopping_sys_session.cookies.set('tfstk',
         'g69ibNvtcC5syNy_smXssb8KNHcK6O6f7EeAktQqTw7QWPe90iDDkeUvXf69nxbHlNCOQReciw8CDKn1MeXDRe8cGc_AuZYv0CnKeYK6ft6qn4H-ew9J1yd0QZPZ0vScnGRo2uJBft6qJkeqwYx6W1iWANWqx9ScjZWV_skFTwsY_Z8V76zFqg6VuE8VTwSRVrzaQZrUYwsV3Z8V3DxFRiXVuEWqxHllHR7y3p9Elv2jyqWZdQjGsa-N7hKpLJ141nb33-JHt_Qrow243pjw0MGGM8cAzQ_Owa8EpRXDYiYOJUkzK95kNnIDSA2NBBRBCOpKru1Mowfyp64a_gXGS_JNOly2AsRHKOpZl7tpxN5lpBhIWsBMSQ_5_XgBoHb9udfUS2QvwHpNtUuLKE1DNnIDSA2wzgWuT7uoC-sEDpPbG1SCxapyAdO5PQkrhDm3Nt1NAG3-xDVbG1SCxannx7Of_Msty')
 
         myj = {"deviceId": "708e8b72-0a46-49c0-beb9-fe5a77efb999",
@@ -103,7 +149,7 @@ class Agent(QObject):
                "optOut": False,
                "lastEventId": 0}
         myj_text = json.dumps(myj)
-        self.session.cookies.set('MYJ_fapsc5t4tc', base64_encode(quote(myj_text)))
+        self.shopping_sys_session.cookies.set('MYJ_fapsc5t4tc', base64_encode(quote(myj_text)))
         ts = curr_milliseconds()
         payload = {
             'account': get_encrypt_by_str(username, ts),
@@ -115,9 +161,9 @@ class Agent(QObject):
             "url": ""
         }
         login_url = f'{ROOT}/{LOGIN_PAGE}'
-        resp = self.session.post(login_url, data=payload, headers=self.headers)
+        resp = self.shopping_sys_session.post(login_url, data=payload, headers=self.headers)
         data = json.loads(resp.text)
-        self.cookie_manager.save_cookies_json(self.session, account=username)
+        self.cookie_manager.save_cookies_json(self.shopping_sys_session, account=username)
         self.online = 'error' not in data
         if not self.online:
             print(f'登录失败[username={username}]: {data}')
@@ -125,27 +171,86 @@ class Agent(QObject):
         return self.online
 
     def post(self, url, payload):
-        resp = self.session.post(url, data=payload, headers=self.headers)
+        resp = self.shopping_sys_session.post(url, data=payload, headers=self.headers)
         return resp.text
 
-    def start_craw(self, url: str, session: requests.Session) -> Product:
+    def start_craw(self, url):
+        """
+        使用 Selenium 获取页面内容并进行解析。
+
+        :param url: 目标商品 URL
+        :param product: 包含商品数据的对象
+        :param logger: 日志对象
+        :return: 更新后的 product 对象
+        """
         product = Product()
-        if url is None:
-            product.invalid = True
-            product.completed = True
-            return product
-        main_page = session.get(url, headers=self.headers, cookies=amazon_cookies)
-        status_code = main_page.status_code
-        if status_code == 404:
-            print(f'{url} 链接失效, 状态码={status_code}')
-            logger.warning(f'{url} 链接失效, 状态码={status_code}')
-            product.completed = True
-            product.invalid = True
-            return product
-        elif status_code != 200:
+        # 1. 导航到目标 URL
+        try:
+            self.amazon_driver.get(url)  # 假设 self.amazon_driver 已初始化
+        except Exception as e:
+            # 如果导航本身失败（例如，网络中断）
+            print(f'{url} 导航失败: {e}')
+            logger.error(f'{url} 导航失败: {e}')
             product.completed = False
             return product
-        main_soup = BeautifulSoup(main_page.text, 'html.parser')
+
+        # 2. 显式等待关键元素出现，判断页面是否加载成功
+        # 替代了 if status_code != 200: 的检查
+
+        main_page_source = None
+        try:
+            # 等待任何一个关键元素出现 (使用自定义的 OR 条件)
+            self.wait.until(
+                any_of_elements_located(KEY_SUCCESS_SELECTORS_LIST),
+                message=f"等待页面关键元素超时 ({url})。"
+            )
+            # 如果成功找到元素，说明页面加载成功
+            main_page_source = self.amazon_driver.page_source
+
+        except TimeoutException:
+            # 3. 超时或加载失败，检查是否为 404/反爬页面
+            main_page_source = self.amazon_driver.page_source
+
+            # 检查是否为 Amazon 的 404/商品不存在页面
+            if "Sorry! We couldn't find that page" in main_page_source or "The requested URL was not found" in main_page_source:
+                # 替代了 if status_code == 404: 的检查
+                print(f'{url} 链接失效, 疑似404页面。')
+                logger.warning(f'{url} 链接失效, 疑似404页面。')
+                product.completed = True
+                product.invalid = True
+                return product
+
+            elif "Type the characters" in main_page_source or "Sorry, we just need to make sure you're not a robot" in main_page_source:
+                # 遇到验证码/反爬，标记为未完成，下次重试
+                print(f'{url} 遇到亚马逊验证码/机器人检查页面，爬取失败。')
+                logger.warning(f'{url} 遇到亚马逊验证码/机器人检查页面。')
+                product.completed = False
+                return product
+
+            else:
+                # 可能是页面加载慢，但不是明确的404或验证码，继续尝试用 BS 解析已有的源码
+                resp = self.amazon_session.get(url)
+                code = resp.status_code
+                if code == 404:
+                    print(f'{url} 链接失效, 404页面。')
+                    product.completed = True
+                    product.invalid = True
+                    return product
+                elif code != 200:
+                    print(f'{url} 链接失效, 状态码: {code}')
+                    logger.warning(f'{url} 链接失效, 状态码: {code}')
+                    product.completed = True
+                    product.invalid = True
+                    return product
+                main_page_source = resp.text
+
+                # 4. 使用 BeautifulSoup 解析页面的最终 HTML 源代码
+        # 替代了 main_soup = BeautifulSoup(main_page.text, 'html.parser')
+        main_soup = BeautifulSoup(main_page_source, 'html.parser')
+
+        # --- 以下是您原有的 Beautiful Soup 解析逻辑 (无需修改) ---
+
+        # 无商品信息检查
         learn_more_span = main_soup.select_one('#fod-cx-message-with-learn-more > span:nth-child(1)')
         out_of_stock_div = main_soup.select_one('#outOfStock')
         if learn_more_span or out_of_stock_div:
@@ -185,22 +290,26 @@ class Agent(QObject):
             else:
                 availability = 'in stock' in availability_span.text.lower()
                 if availability:
-                    price_span = buy_box_div.select_one('#corePrice_feature_div > div > div > span.a-price.aok-align-center > span.a-offscreen')
+                    price_span = buy_box_div.select_one(
+                        '#corePrice_feature_div > div > div > span.a-price.aok-align-center > span.a-offscreen')
                     if price_span:
                         product.price = self.extract_price(price_span)
                     delivery_tag = buy_box_div.select_one(
                         '#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE > span')
                     if delivery_tag is None:
-                        delivery_tag = buy_box_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-NO_PROMISE_UPSELL_MESSAGE > a')
+                        delivery_tag = buy_box_div.select_one(
+                            '#mir-layout-DELIVERY_BLOCK-slot-NO_PROMISE_UPSELL_MESSAGE > a')
                     if delivery_tag:
                         product.shipping_cost = delivery_tag.text.strip().split(' ')[0]
                     else:
-                        delivery_tag = buy_box_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-NO_PROMISE_UPSELL_MESSAGE')
+                        delivery_tag = buy_box_div.select_one(
+                            '#mir-layout-DELIVERY_BLOCK-slot-NO_PROMISE_UPSELL_MESSAGE')
                         if delivery_tag:
                             product.shipping_cost = delivery_tag.text.strip().split(' ')[0]
                         else:
                             print(f'{url} 无法获取运费信息')
-                    ships_from_span = buy_box_div.select_one('#fulfillerInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
+                    ships_from_span = buy_box_div.select_one(
+                        '#fulfillerInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
                     if ships_from_span:
                         shipping_from = ships_from_span.text.strip()
                     else:
@@ -220,7 +329,8 @@ class Agent(QObject):
                     if sold_by_span:
                         sold_by = sold_by_span.text.strip()
                     else:
-                        sold_by_span = buy_box_div.select_one('#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
+                        sold_by_span = buy_box_div.select_one(
+                            '#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
                         if sold_by_span:
                             sold_by = sold_by_span.text.strip()
                         else:
@@ -232,7 +342,7 @@ class Agent(QObject):
                     if price_feature_div:
                         availability = True
                         price_span = price_feature_div.select_one('#corePrice_feature_div > div > div > '
-                                                      'span.a-price.aok-align-center > span.a-offscreen')
+                                                                  'span.a-price.aok-align-center > span.a-offscreen')
                         if price_span:
                             product.price = self.extract_price(price_span)
                         delivery_tag = main_soup.select_one(
@@ -240,7 +350,7 @@ class Agent(QObject):
                         if delivery_tag:
                             product.shipping_cost = delivery_tag.text.strip().split(' ')[0]
                         shipping_from_span = main_soup.select_one('#fulfillerInfoFeature_feature_div > '
-                                                              'div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
+                                                                  'div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
                         if shipping_from_span:
                             shipping_from = shipping_from_span.text.strip()
                         else:
@@ -251,8 +361,8 @@ class Agent(QObject):
                         else:
                             sold_by = ''
                         product.shipping_from_amazon = shipping_from_amazon(shipping_from, sold_by)
-                product.availability = availability
-                product.completed = True
+                    product.availability = availability
+                    product.completed = True
         else:
             availability_span = new_product_div.select_one('#availability > span')
             if availability_span is None:
@@ -260,26 +370,30 @@ class Agent(QObject):
                 product.availability = select_quantity is not None
             else:
                 product.availability = 'in stock' in availability_span.text.lower()
-            price_span = new_product_div.select_one('#corePrice_feature_div > div > div > div > div > span.a-price.a-text-normal.aok-align-center.reinventPriceAccordionT2 > span.a-offscreen')
+            price_span = new_product_div.select_one(
+                '#corePrice_feature_div > div > div > div > div > span.a-price.a-text-normal.aok-align-center.reinventPriceAccordionT2 > span.a-offscreen')
             if price_span is None:
                 product.invalid = True
                 product.completed = True
                 return product
             product.price = self.extract_price(price_span)
-            shipping_info = new_product_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_MEDIUM')
+            shipping_info = new_product_div.select_one(
+                '#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_MEDIUM')
             if shipping_info is None:
                 shipping_info = new_product_div.select_one('#mir-layout-DELIVERY_BLOCK-slot-NO_PROMISE_UPSELL_MESSAGE')
             if shipping_info:
                 product.shipping_cost = shipping_info.text.strip().split(' ')[0]
             else:
                 print(f'{url} 获取运费信息失败')
-            shipping_from_span = new_product_div.select_one('#sfsb_accordion_head > div:nth-child(1) > div > span:nth-child(2)')
+            shipping_from_span = new_product_div.select_one(
+                '#sfsb_accordion_head > div:nth-child(1) > div > span:nth-child(2)')
             if shipping_from_span:
                 shipping_from = shipping_from_span.text.strip()
             else:
                 shipping_from = ''
                 print(f'{url} 获取货源地信息失败')
-            sold_by_span = new_product_div.select_one('#sfsb_accordion_head > div:nth-child(2) > div > span:nth-child(2)')
+            sold_by_span = new_product_div.select_one(
+                '#sfsb_accordion_head > div:nth-child(2) > div > span:nth-child(2)')
             if sold_by_span:
                 sold_by = sold_by_span.text.strip()
             else:
@@ -368,9 +482,12 @@ class Agent(QObject):
         return expired_product_ids, new_products, total_items
 
 
+    def stop(self):
+        self.amazon_driver.close()
+
+
 if __name__ == '__main__':
     agent = Agent()
     agent.login('13257592627')
-    session = requests.session()
-    product = agent.start_craw('https://www.amazon.com/dp/B0F2DTDDFV?language=en_US', session)
+    product = agent.start_craw('https://www.amazon.com/dp/B0F2DTDDFV?language=en_US')
     print(product)
