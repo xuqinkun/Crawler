@@ -7,10 +7,6 @@ from agent import AmazonAgent
 from bit_browser import *
 from db_util import AmazonDatabase
 
-# 批量处理大小和并发数配置
-BATCH_SIZE = 100
-MAX_WORKERS = 1  # 并发线程数，可根据网络状况调整
-
 
 class CrawlWorker(QObject):
     """爬取工作线程"""
@@ -22,7 +18,7 @@ class CrawlWorker(QObject):
     finished = pyqtSignal(str)  # 用户名
     error_occurred = pyqtSignal(str, str)  # 用户名, 错误信息
 
-    def __init__(self, username, agent, logger):
+    def __init__(self, username, agent, logger, max_workers=5, batch_size=100):
         super().__init__()
         self.username = username
         self.logger = logger
@@ -35,6 +31,8 @@ class CrawlWorker(QObject):
         self.first_running = True
         self.agent_pool = []
         # 添加暂停/恢复相关的同步对象
+        self.max_workers = max_workers
+        self.batch_size = batch_size
         self.mutex = QMutex()
         self.condition = QWaitCondition()
 
@@ -78,7 +76,7 @@ class CrawlWorker(QObject):
             return []
 
         # 2. 限制使用的窗口数量为 MAX_WORKERS
-        target_ids = browser_ids[:MAX_WORKERS]
+        target_ids = browser_ids[:self.max_workers]
         self.log_updated.emit(self.username, f"将使用 {len(target_ids)} 个浏览器窗口进行并发爬取。")
 
         agent_pool = []
@@ -227,7 +225,7 @@ class CrawlWorker(QObject):
                 if success:
                     completed_products.append(product)
                     # 批量保存已完成的商品
-                    if len(completed_products) >= BATCH_SIZE:
+                    if len(completed_products) >= self.batch_size:
                         db.batch_upsert_products_chunked(completed_products)
                         completed_products.clear()
                         time.sleep(0.1)

@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 import platform
@@ -19,6 +20,16 @@ from export import ExportWorker
 from logger import setup_concurrent_logging
 from util import curr_milliseconds, ensure_dir_exists
 from worker import CrawlWorker
+
+def parse_arguments():
+    """解析命令行参数"""
+    parser = argparse.ArgumentParser(description='亚马逊爬虫管理工具')
+    parser.add_argument('--workers', '-w', type=int, default=1,
+                       help='设置并发工作线程数（默认: 1）')
+    parser.add_argument('--batch-size', '-b', type=int, default=100,
+                       help='设置批量处理大小（默认: 100）')
+    return parser.parse_args()
+
 
 db = AmazonDatabase()
 db.connect()
@@ -574,6 +585,7 @@ class ConsoleWindow(QWidget):
         """关闭事件处理"""
         super().closeEvent(event)
 
+args = parse_arguments()
 
 class MainWindow(QWidget):
     """重新设计的主窗口"""
@@ -595,6 +607,12 @@ class MainWindow(QWidget):
         self.delete_buttons = {}
         self.clear_buttons = {}
         self.export_path = user_home / 'Documents' / 'amazon'  # 全局导出目录
+        # 保存命令行参数
+        self.max_workers = args.workers
+        self.batch_size = args.batch_size
+
+        # 在状态栏显示当前配置
+        print(f"命令行配置: workers={self.max_workers}, batch_size={self.batch_size}")
         ensure_dir_exists(self.export_path)
         self.init_ui()
         self.load_accounts()
@@ -1222,7 +1240,11 @@ class MainWindow(QWidget):
                 return
 
             # 创建工作线程和QThread
-            self.crawl_workers[username] = CrawlWorker(username=username, agent=agent, logger=logger)
+            self.crawl_workers[username] = CrawlWorker(username=username,
+                                                       agent=agent,
+                                                       logger=logger,
+                                                       max_workers=self.max_workers,
+                                                       batch_size=self.batch_size)
             self.crawl_threads[username] = QThread()
 
             # 将工作线程移动到新线程
