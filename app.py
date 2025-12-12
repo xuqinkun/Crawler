@@ -1170,7 +1170,7 @@ class MainWindow(QWidget):
                 self.status_label.setText(f'{username} 开始爬取...')
                 # 更新状态标签
                 self.update_account_status(username, '初始化...', '#17a2b8')
-
+                print(f'启动爬取任务')
                 self.start_worker(username)
 
                 # 更新控制台日志
@@ -1193,6 +1193,7 @@ class MainWindow(QWidget):
                     self.console_windows[username].update_logs(f"[暂停] {username} 爬取任务已暂停")
         except Exception as e:
             logger.error(f'操作失败: {str(e)}')
+            print(f'操作失败：{e}')
             self.status_label.setText(f'{username} 操作失败: {str(e)}')
             # 发生错误时恢复按钮状态
             if username in self.start_buttons:
@@ -1242,6 +1243,7 @@ class MainWindow(QWidget):
             thread.finished.connect(thread.deleteLater)
 
             # 启动线程
+            print(f'启动工作线程')
             thread.start()
 
             # 更新界面状态
@@ -1254,6 +1256,7 @@ class MainWindow(QWidget):
         except Exception as e:
             error_msg = f'启动爬取任务失败: {str(e)}'
             self.status_label.setText(error_msg)
+            print(error_msg)
             logger.error(error_msg)
             if username in self.start_buttons:
                 self.start_buttons[username].set_running(False)
@@ -1275,12 +1278,25 @@ class MainWindow(QWidget):
         try:
             if username in self.crawl_workers:
                 # 停止工作线程
-                self.crawl_workers[username].stop()
+                thread = self.crawl_threads[username]
+                worker = self.crawl_workers[username]
+                # 1. 停止工作线程（worker.stop() 必须包含 wakeAll()）
+                worker.stop()
 
                 # 更新界面状态
                 self.status_label.setText(f'{username} 就绪')
                 self.update_account_status(username, '就绪', '#ffc107')
 
+                if thread.isRunning():
+                    thread.quit()
+                    # 推荐：等待线程安全退出，避免主线程崩溃
+                    if not thread.wait(5000):  # 等待5秒
+                        # 警告或采取其他措施，如强制终止 (不推荐)
+                        print(f"警告: 线程 {username} 未在规定时间内退出")
+                # 3. 清理对象
+                del self.crawl_workers[username]
+                del self.crawl_threads[username]
+                thread.deleteLater()  # 确保 Qt 资源被释放
                 # 更新按钮状态
                 if username in self.start_buttons:
                     self.start_buttons[username].set_running(False)

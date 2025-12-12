@@ -116,7 +116,7 @@ class CrawlWorker(QObject):
         print(f'未解析完成的商品数:{len(product_uncompleted)}')
         self.completed_num = self.total_num - len(product_uncompleted)
 
-        if self.get_progress() > 0:
+        if self.get_progress() > 0 and self.is_running:
             self.progress_updated.emit(self.username, '爬取中', self.get_progress())
 
         # 创建线程安全的Session对象
@@ -127,7 +127,7 @@ class CrawlWorker(QObject):
 
         # 将失败的商品重新放入待处理队列（可选）
         # 这里可以根据需求决定是否重试失败的商品
-        if failed_products:
+        if failed_products and not self.is_stopped:
             print(f"有 {len(failed_products)} 个商品爬取失败")
             self.log_updated.emit(self.username, f"[警告] {len(failed_products)} 个商品爬取失败")
             self.do_craw_concurrent(db, product_uncompleted, session)
@@ -168,8 +168,6 @@ class CrawlWorker(QObject):
             while processed_count < total_to_process and not self.is_stopped:
                 # 检查是否暂停
                 self.wait_if_paused()
-                if self.is_stopped:
-                    break
 
                 # 获取当前批次的产品
                 batch_size = min(BATCH_SIZE, total_to_process - processed_count)
@@ -187,8 +185,6 @@ class CrawlWorker(QObject):
                 futures = []
                 for product in current_batch:
                     # 为每个线程创建独立的Session
-
-
                     future = executor.submit(crawl_single_product, product, session)
                     futures.append(future)
 
@@ -196,7 +192,8 @@ class CrawlWorker(QObject):
                 for future in concurrent.futures.as_completed(futures):
                     try:
                         data, product, status = future.result(timeout=10)  # 3s超时
-
+                        if self.is_stopped:
+                            break
                         if status == "success" and data:
                             completed_products.append(data)
                             self.completed_num += 1
@@ -212,7 +209,8 @@ class CrawlWorker(QObject):
                             failed_products.append(product)
 
                         # 更新进度
-                        self.progress_updated.emit(self.username, '爬取中', self.get_progress())
+                        if self.is_running:
+                            self.progress_updated.emit(self.username, '爬取中', self.get_progress())
 
                     except concurrent.futures.TimeoutError:
                         error_msg = f"爬取超时: {product.url}"
@@ -240,5 +238,13 @@ class CrawlWorker(QObject):
 
     def stop(self):
         """停止爬取任务"""
+        # 加锁，确保状态修改的原子性
+        self.mutex.lock()
         self.is_running = False
         self.is_stopped = True
+        self.completed_num = 0
+        self.finished = False
+        self.first_running = True
+        # 这一步确保在 wait_if_paused() 中阻塞的线程能够跳出等待
+        self.condition.wakeAll()
+        self.mutex.unlock()
