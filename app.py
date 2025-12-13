@@ -4,6 +4,7 @@ import os
 import platform
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import requests
@@ -1238,19 +1239,32 @@ class MainWindow(QWidget):
     def start_worker(self, username):
         """开始爬取任务"""
         try:
+            # 检查是否已有worker在运行，有则先清理
+            if username in self.crawl_workers or username in self.crawl_threads:
+                self.force_stop_worker(username)
+                # 清理残留引用
+                if username in self.crawl_workers:
+                    del self.crawl_workers[username]
+                if username in self.crawl_threads:
+                    del self.crawl_threads[username]
+                time.sleep(1)  # 稍作等待确保资源释放
+
             agent = self.agents[username]
 
-            # 如果
+            # 如果worker存在且是暂停状态，恢复它
             if username in self.crawl_workers and self.crawl_workers[username].is_paused:
                 self.resume_worker(username)
                 return
 
-            # 创建工作线程和QThread
-            self.crawl_workers[username] = CrawlWorker(username=username,
-                                                       agent=agent,
-                                                       logger=logger,
-                                                       max_workers=self.max_workers,
-                                                       batch_size=self.batch_size)
+            # 创建新的工作线程和QThread
+            self.crawl_workers[username] = CrawlWorker(
+                username=username,
+                agent=agent,
+                logger=logger,
+                max_workers=self.max_workers,
+                batch_size=self.batch_size
+            )
+
             self.crawl_threads[username] = QThread()
 
             # 将工作线程移动到新线程
@@ -1268,10 +1282,21 @@ class MainWindow(QWidget):
 
             # 连接线程开始和结束信号
             thread.started.connect(worker.run)
-            thread.finished.connect(thread.deleteLater)
+            worker.finished.connect(thread.quit)  # worker完成后退出线程
+            worker.finished.connect(worker.deleteLater)  # 删除worker对象
+            thread.finished.connect(thread.deleteLater)  # 删除线程对象
+
+            # 清理线程引用当线程结束时
+            def clean_thread_ref():
+                if username in self.crawl_threads:
+                    del self.crawl_threads[username]
+                if username in self.crawl_workers:
+                    del self.crawl_workers[username]
+
+            thread.finished.connect(clean_thread_ref)
 
             # 启动线程
-            print(f'启动工作线程')
+            print(f'启动工作线程 {username}')
             thread.start()
 
             # 更新界面状态
@@ -1286,6 +1311,13 @@ class MainWindow(QWidget):
             self.status_label.setText(error_msg)
             print(error_msg)
             logger.error(error_msg)
+
+            # 清理可能创建的资源
+            if username in self.crawl_workers:
+                del self.crawl_workers[username]
+            if username in self.crawl_threads:
+                del self.crawl_threads[username]
+
             if username in self.start_buttons:
                 self.start_buttons[username].set_running(False)
 
@@ -1568,6 +1600,41 @@ class MainWindow(QWidget):
                     pass
         except Exception as e:
             print(f'清除数据出错 {e}')
+
+    def force_stop_worker(self, username):
+        """强制停止工作线程，确保完全退出"""
+        try:
+            if username in self.crawl_workers:
+                worker = self.crawl_workers[username]
+
+                # 调用worker的stop方法
+                worker.stop()
+
+                # 如果关联了线程，等待线程结束
+                if username in self.crawl_threads:
+                    thread = self.crawl_threads[username]
+
+                    # 尝试优雅退出
+                    thread.quit()
+                    if not thread.wait(3000):  # 等待3秒
+                        print(f"线程 {username} 未正常退出，强制终止")
+                        thread.terminate()
+                        thread.wait()
+
+                # 清理agent pool
+                if hasattr(worker, 'agent_pool'):
+                    for agent in worker.agent_pool:
+                        try:
+                            agent.stop()
+                        except Exception as e:
+                            print(f"关闭agent时出错: {e}")
+                    worker.agent_pool.clear()
+
+                print(f"已强制停止 {username} 的worker")
+
+        except Exception as e:
+            print(f"强制停止worker时出错: {e}")
+            logger.error(f"强制停止worker时出错: {e}")
 
     def delete_account(self, username):
         # 确认删除对话框

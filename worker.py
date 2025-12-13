@@ -254,18 +254,25 @@ class CrawlWorker(QObject):
         self.is_running = False
         self.is_stopped = True
         self.completed_num = 0
-        self.finished = False
         self.first_running = True
-        # 这一步确保在 wait_if_paused() 中阻塞的线程能够跳出等待
+
+        # 发送最终进度信号
+        if hasattr(self, 'total_num'):
+            self.progress_updated.emit(self.username, '已停止', 0)
+
+        # 唤醒所有等待的线程
         self.condition.wakeAll()
-        # 关闭主 Agent
         self.mutex.unlock()
 
-        # 尝试关闭所有并发 Agent (如果在运行过程中被外部调用 stop)
+        # 关闭所有并发Agent
         for agent in self.agent_pool:
             try:
                 agent.stop()
-            except:
-                self.logger.error(f"关闭agent pool出错: {e}")
-                pass
+            except Exception as e:
+                print(f"关闭agent pool出错: {e}")
+                # 继续清理其他agent，不因单个失败而停止
+
+        # 清空agent pool
         self.agent_pool.clear()
+
+        print(f"Worker {self.username} 已完全停止")
