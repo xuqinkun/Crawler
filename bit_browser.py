@@ -14,9 +14,18 @@ def get_bitbrowser_driver(browser_id):
     """
     # 1. 请求比特浏览器接口打开窗口
     open_url = f"{BITBROWSER_API_URL}/browser/open"
+    # --- 关键修改：设置启动参数 (args) ---
+    custom_args = [
+        # 禁用所有 DevTools 相关的自动打开行为
+        "--auto-open-devtools-for-tabs=false",
+        # 推荐：启动时不加载任何页面，让 Selenium 负责导航
+        "about:blank",
+    ]
+    # --- 关键修改结束 ---
+
     data = {
         "id": browser_id,
-        # "args": [],  # 如果需要额外的启动参数
+        "args": custom_args,  # <--- 将参数列表传入
         # "loadExtensions": False # 是否加载插件
     }
 
@@ -45,7 +54,24 @@ def get_bitbrowser_driver(browser_id):
 
     # 初始化 Driver
     driver = webdriver.Chrome(service=service, options=chrome_options)
+    try:
+        if len(driver.window_handles) > 1:
+            # 识别主窗口句柄
+            main_handle = driver.current_window_handle
 
+            # 遍历并关闭所有非主窗口
+            for handle in driver.window_handles:
+                if handle != main_handle:
+                    driver.switch_to.window(handle)
+                    driver.close()
+
+            # 确保操作完成后，Selenium 切换回主窗口
+            driver.switch_to.window(main_handle)
+
+    except Exception as e:
+        # 如果在清理过程中出现任何错误，记录日志但不要让 Worker 崩溃
+        # （例如，如果在关闭时Session已经开始不稳定）
+        print(f"清理多余浏览器页签时发生错误，跳过清理: {e}")
     return driver
 
 
@@ -87,7 +113,7 @@ if __name__ == "__main__":
     # 替换为你比特浏览器里的 窗口ID
     ids = get_all_browser_ids()
 
-    target_browser_id = list(ids.values())[0]
+    target_browser_id = ids[0]
 
     driver = get_bitbrowser_driver(target_browser_id)
 
