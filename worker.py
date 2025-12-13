@@ -72,6 +72,7 @@ class CrawlWorker(QObject):
         # 1. 获取所有可用的 BitBrowser ID
         browser_ids = get_all_browser_ids()
         if not browser_ids:
+            print('"未找到任何比特浏览器窗口ID，请先创建或打开窗口。"')
             self.error_occurred.emit(self.username, "未找到任何比特浏览器窗口ID，请先创建或打开窗口。")
             return []
 
@@ -82,6 +83,7 @@ class CrawlWorker(QObject):
         agent_pool = []
         for i, browser_id in enumerate(target_ids):
             if self.is_stopped:
+                print(f'worker已经停止')
                 break
 
             # 3. 启动窗口并获取 Driver
@@ -96,6 +98,7 @@ class CrawlWorker(QObject):
                     # 这一步确保新会话也能继承登录和Cookie状态
                     agent_pool.append(temp_agent)
                 except Exception as e:
+                    print(f"初始化 Agent 失败: {e}")
                     self.log_updated.emit(self.username, f"初始化 Agent 失败: {e}")
                     try:
                         driver.quit()
@@ -193,7 +196,7 @@ class CrawlWorker(QObject):
 
         # 1. 初始化 Agent Pool
         agent_pool = self._initialize_agent_pool()
-        if not agent_pool:
+        if not agent_pool and not self.is_stopped:
             self.status_updated.emit(self.username, "并发爬取失败，浏览器初始化错误。")
             return
         # 2. 准备任务和 Agent 循环器
@@ -241,12 +244,6 @@ class CrawlWorker(QObject):
 
         # 5. 关闭所有 Agent/Driver
         self.log_updated.emit(self.username, "爬取结束，正在关闭浏览器窗口...")
-        for agent in self.agent_pool:
-            try:
-                agent.stop()  # Calls self.amazon_driver.close()
-            except Exception as e:
-                self.logger.error(f"关闭浏览器出错: {e}")
-        self.agent_pool.clear()  # 清空池
         # 完成任务
         self.progress_updated.emit(self.username, '结束', self.get_progress())
 
@@ -261,17 +258,14 @@ class CrawlWorker(QObject):
         self.first_running = True
         # 这一步确保在 wait_if_paused() 中阻塞的线程能够跳出等待
         self.condition.wakeAll()
-        self.mutex.unlock()
         # 关闭主 Agent
-        try:
-            self.agent.stop()
-        except:
-            pass
+        self.mutex.unlock()
 
         # 尝试关闭所有并发 Agent (如果在运行过程中被外部调用 stop)
         for agent in self.agent_pool:
             try:
                 agent.stop()
             except:
+                self.logger.error(f"关闭agent pool出错: {e}")
                 pass
         self.agent_pool.clear()

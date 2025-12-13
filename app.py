@@ -611,8 +611,6 @@ class MainWindow(QWidget):
         self.max_workers = args.workers
         self.batch_size = args.batch_size
 
-        self.mutex = QMutex()
-
         # 在状态栏显示当前配置
         print(f"命令行配置: workers={self.max_workers}, batch_size={self.batch_size}")
         ensure_dir_exists(self.export_path)
@@ -882,10 +880,8 @@ class MainWindow(QWidget):
 
     def stop_all_workers(self):
         """停止所有后台线程"""
-        self.mutex.lock()
         for username in self.accounts:
             self.stop_worker(username)
-        self.mutex.unlock()
 
     def stop_all_agents(self):
         """停止所有Agent的爬取任务"""
@@ -1250,7 +1246,6 @@ class MainWindow(QWidget):
                 return
 
             # 创建工作线程和QThread
-            self.mutex.lock()
             self.crawl_workers[username] = CrawlWorker(username=username,
                                                        agent=agent,
                                                        logger=logger,
@@ -1285,7 +1280,6 @@ class MainWindow(QWidget):
 
             # 标记有任务在运行
             self.is_running = True
-            self.mutex.unlock()
 
         except Exception as e:
             error_msg = f'启动爬取任务失败: {str(e)}'
@@ -1320,17 +1314,12 @@ class MainWindow(QWidget):
                 # 更新界面状态
                 self.status_label.setText(f'{username} 就绪')
                 self.update_account_status(username, '就绪', '#ffc107')
-
-                if thread.isRunning():
-                    thread.quit()
-                    # 推荐：等待线程安全退出，避免主线程崩溃
-                    if not thread.wait(2000) and thread.isRunning():  # 等待5秒
-                        # 警告或采取其他措施，如强制终止 (不推荐)
-                        print(f"警告: 线程 {username} 未在规定时间内退出")
                 # 3. 清理对象
-                del self.crawl_workers[username]
-                del self.crawl_threads[username]
-                thread.deleteLater()  # 确保 Qt 资源被释放
+                # thread.quit()
+                # del self.crawl_workers[username]
+                # del self.crawl_threads[username]
+
+                # thread.deleteLater()  # 确保 Qt 资源被释放
                 # 更新按钮状态
                 if username in self.start_buttons:
                     self.start_buttons[username].set_running(False)
@@ -1399,7 +1388,6 @@ class MainWindow(QWidget):
     def handle_crawl_finished(self, username):
         """处理爬取完成"""
         # 清理线程资源
-        self.mutex.lock()
         self.start_buttons[username].is_finished = True
         self.start_buttons[username].is_running = False
         if username in self.crawl_workers:
@@ -1414,7 +1402,6 @@ class MainWindow(QWidget):
         # 更新状态
         self.status_label.setText(f'{username} 爬取完成')
         self.update_account_status(username=username, status='已完成', color='#28a745', progress=100)
-        self.mutex.lock()
 
 
     def check_all_tasks_finished(self):
@@ -1540,32 +1527,47 @@ class MainWindow(QWidget):
 
     def clear(self, username):
         # 确认重启对话框
-        self.mutex.lock()
-        if username in self.crawl_workers and self.crawl_workers[username].is_running:
-            QMessageBox.warning(
+        try:
+            if username in self.crawl_workers and self.crawl_workers[username].is_running:
+                QMessageBox.warning(
+                    self,
+                    '操作被禁止',
+                    f'账号 {username} 正在下载过程中，不可以清除数据！\n请先暂停下载任务。',
+                    QMessageBox.Ok
+                )
+                return False
+            reply = QMessageBox.question(
                 self,
-                '操作被禁止',
-                f'账号 {username} 正在下载过程中，不可以清除数据！\n请先暂停下载任务。',
-                QMessageBox.Ok
+                '确认清除',
+                f'确定要清除下载进度吗？\n此操作将删除所有相关数据且不可恢复。',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
             )
-            return False
-        reply = QMessageBox.question(
-            self,
-            '确认清除',
-            f'确定要清除下载进度吗？\n此操作将删除所有相关数据且不可恢复。',
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        if reply == QMessageBox.Yes:
-            print(f'清理爬取进度 {username}')
-            self.update_account_status(username, '清理爬取进度', self.get_status_color(''))
-            self.start_buttons[username].is_running = False
-            self.start_buttons[username].is_finished = False
-            self.start_buttons[username].update_style()
-            self.stop_worker(username)
-            db.delete_product_by_owner(username)
-            self.update_account_status(username, '就绪', self.get_status_color('就绪'))
-        self.mutex.unlock()
+            if reply == QMessageBox.Yes:
+                print(f'清理爬取进度 {username}')
+                self.update_account_status(username, '清理爬取进度', self.get_status_color(''))
+                self.start_buttons[username].is_running = False
+                self.start_buttons[username].is_finished = False
+                self.start_buttons[username].update_style()
+                self.stop_worker(username)
+                db.delete_product_by_owner(username)
+                self.update_account_status(username, '就绪', self.get_status_color('就绪'))
+                # 4. 清理worker和thread引用
+                if username in self.crawl_workers:
+                    del self.crawl_workers[username]
+                if username in self.crawl_threads:
+                    thread = self.crawl_threads[username]
+                    thread.quit()
+                    thread.wait()  # 等待线程真正退出
+                    del self.crawl_threads[username]
+
+                # 5. 重新初始化agent，确保浏览器会话干净
+                if username in self.agents:
+                    # 可以重新创建agent实例，或者调用agent的reset方法
+                    # 这里简单处理：不操作现有agent，等下次启动时创建新的
+                    pass
+        except Exception as e:
+            print(f'清除数据出错 {e}')
 
     def delete_account(self, username):
         # 确认删除对话框

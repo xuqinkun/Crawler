@@ -244,13 +244,14 @@ class AmazonAgent(QObject):
         # driver 对象启动 Chrome 浏览器
         self.amazon_session = requests.Session()
         self.amazon_driver = driver
+        time.sleep(1.5)
         self.amazon_driver.maximize_window()
         self.wait = WebDriverWait(self.amazon_driver, 10)  # 最大等待 15 秒
         self.shopping_sys_session = requests.Session()
         self.amazon_driver.get("https://www.amazon.com/dp/B0F2DTDDFV?language=en_US")
 
         try:
-            time.sleep(0.5)
+            time.sleep(1)
             self.amazon_driver.find_element(By.CSS_SELECTOR, 'body > div > div.a-row.a-spacing-double-large > div.a-section > div > div > form > div > div > span > span > button').click()
             print(f'Click continue')
         except Exception:
@@ -504,7 +505,10 @@ class AmazonAgent(QObject):
         return float(price_span.text[1:].replace(',', ''))
 
     def stop(self):
-        self.amazon_driver.close()
+        try:
+            self.amazon_driver.close()
+        except Exception as e:
+            pass
 
 
 if __name__ == '__main__':
