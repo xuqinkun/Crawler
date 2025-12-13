@@ -372,6 +372,7 @@ class AmazonAgent(QObject):
         new_product_div = main_soup.select_one('div[id^="newAccordionRow_"]')
         shipping_from = ''
         sold_by = ''
+        availability = False
         if new_product_div is None:
             buy_box_div = main_soup.select_one('#buybox')
             if buy_box_div:
@@ -455,15 +456,15 @@ class AmazonAgent(QObject):
                         else:
                             sold_by = ''
                         product.shipping_from_amazon = shipping_from_amazon(shipping_from, sold_by)
-                    product.availability = availability
+                    availability = availability
                     product.completed = True
         else:
             availability_span = new_product_div.select_one('#availability > span')
             if availability_span is None:
                 select_quantity = new_product_div.select_one('#selectQuantity')
-                product.availability = select_quantity is not None
+                availability = select_quantity is not None
             else:
-                product.availability = 'in stock' in availability_span.text.lower()
+                availability = 'in stock' in availability_span.text.lower()
             price_span = new_product_div.select_one(
                 '#corePrice_feature_div > div > div > div > div > span.a-price.a-text-normal.aok-align-center.reinventPriceAccordionT2 > span.a-offscreen')
             if price_span is None:
@@ -495,6 +496,7 @@ class AmazonAgent(QObject):
                 print(f'{url} 获取卖方信息失败')
         product.shipping_from_amazon = shipping_from_amazon(shipping_from, sold_by)
         product.completed = True
+        product.availability = availability
         return product
 
     @staticmethod
@@ -510,6 +512,6 @@ if __name__ == '__main__':
     ids = get_all_browser_ids()
     driver = get_bitbrowser_driver(ids[0])
     agent = AmazonAgent(driver=driver)
-    p = Product(url='https://www.amazon.com/dp/B0C46XSMMQ')
+    p = Product(url='https://www.amazon.com/dp/B0DY64FB25')
     agent.start_craw(p)
     print(p)
