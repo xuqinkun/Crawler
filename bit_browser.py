@@ -1,3 +1,6 @@
+import json
+import time
+
 import requests
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -6,7 +9,7 @@ from selenium.webdriver.chrome.service import Service
 # 配置区域
 BITBROWSER_API_URL = "http://127.0.0.1:54345"  # 比特浏览器默认 API 地址
 CHROMEDRIVER_PATH = r"chromedriver.exe"  # 你的对应版本的驱动路径
-
+headers = {'Content-Type': 'application/json'}
 
 def get_bitbrowser_driver(browser_id):
     """
@@ -49,13 +52,24 @@ def get_bitbrowser_driver(browser_id):
     chrome_options = Options()
     # 关键步骤：设置 debuggerAddress
     chrome_options.add_experimental_option("debuggerAddress", debug_address)
-
+    chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--log-level=3')
+    chrome_options.page_load_strategy = 'eager'
     # 可选：手动指定驱动路径（推荐），防止系统 PATH 中的高版本驱动报错
     service = Service(executable_path=CHROMEDRIVER_PATH)
 
-    # 初始化 Driver
-    driver = webdriver.Chrome(service=service, options=chrome_options)
+    from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
+    capabilities = DesiredCapabilities.CHROME.copy()
+    capabilities['pageLoadStrategy'] = 'none'  # 不等待页面完全加载
+    # 初始化 Driver
+    driver = webdriver.Chrome(service=service,
+                              options=chrome_options)
+    driver.set_page_load_timeout(30)
+    driver.set_script_timeout(30)
     return driver
 
 
@@ -103,7 +117,7 @@ if __name__ == "__main__":
 
     if driver:
         print("Selenium 连接成功！")
-        driver.get("https://www.amazon.com")
+        driver.get("https://www.amazon.com/dp/B0DY64FB25")
         print(driver.title)
 
         # 注意：使用接管模式时，不要使用 driver.quit()，否则会关闭整个浏览器窗口

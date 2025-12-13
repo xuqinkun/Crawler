@@ -81,29 +81,58 @@ class CrawlWorker(QObject):
         self.log_updated.emit(self.username, f"将使用 {len(target_ids)} 个浏览器窗口进行并发爬取。")
 
         agent_pool = []
+        failed_ids = []
+
         for i, browser_id in enumerate(target_ids):
             if self.is_stopped:
                 print(f'worker已经停止')
                 break
 
-            # 3. 启动窗口并获取 Driver
-            self.log_updated.emit(self.username, f"正在启动浏览器 #{i + 1}/{len(target_ids)} (ID: {browser_id[:8]}...)")
-            driver = get_bitbrowser_driver(browser_id)
-            if driver:
+            # 尝试连接浏览器，最多重试3次
+            max_retries = 3
+            connected = False
+
+            for retry in range(max_retries):
                 try:
-                    # 4. 为每个 Driver 创建一个独立的 Agent 实例
+                    # 3. 启动窗口并获取 Driver
+                    self.log_updated.emit(self.username,
+                                          f"正在启动浏览器 #{i + 1}/{len(target_ids)} (ID: {browser_id[:8]}...), 尝试 {retry + 1}/{max_retries}")
+
+                    driver = get_bitbrowser_driver(browser_id)
+
+                    if not driver:
+                        continue
+
+                    # 4. 验证driver是否可用
+                    win = driver.current_window_handle  # 简单测试
+
+                    # 5. 为每个 Driver 创建一个独立的 Agent 实例
                     temp_agent = AmazonAgent(driver=driver)
 
-                    # 5. 重新加载登录信息 (使用主 Agent 的用户名)
-                    # 这一步确保新会话也能继承登录和Cookie状态
                     agent_pool.append(temp_agent)
+                    connected = True
+                    break
+
                 except Exception as e:
-                    print(f"初始化 Agent 失败: {e}")
-                    self.log_updated.emit(self.username, f"初始化 Agent 失败: {e}")
-                    try:
-                        driver.quit()
-                    except:
-                        pass
+                    error_msg = f"初始化浏览器 #{i + 1} 失败 (第{retry + 1}次尝试): {str(e)}"
+                    print(error_msg)
+                    self.log_updated.emit(self.username, error_msg)
+
+                    # 等待后重试
+                    if retry < max_retries - 1:
+                        time.sleep(2)
+
+            if not connected:
+                failed_ids.append(browser_id)
+
+        # 报告结果
+        if failed_ids:
+            error_msg = f"以下浏览器窗口初始化失败: {failed_ids}"
+            print(error_msg)
+            self.log_updated.emit(self.username, error_msg)
+
+        if not agent_pool:
+            self.error_occurred.emit(self.username, "所有浏览器窗口初始化失败，请检查浏览器是否已打开。")
 
         self.agent_pool = agent_pool
         return agent_pool
