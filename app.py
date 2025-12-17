@@ -615,7 +615,7 @@ class MainWindow(QWidget):
         self.batch_size = args.batch_size
 
         # 在状态栏显示当前配置
-        print(f"命令行配置: workers={self.max_workers}, batch_size={self.batch_size}")
+        print(f"命令行配置: workers={self.max_workers}, batch_size={self.batch_size}, use_bit={args.use_bit}")
         ensure_dir_exists(self.export_path)
         self.init_ui()
         self.load_accounts()
