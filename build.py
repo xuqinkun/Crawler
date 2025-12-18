@@ -2,6 +2,10 @@ import sys
 
 import PyInstaller.__main__
 import os
+# 1. 获取certifi包的安装位置，并找到cacert.pem文件
+import certifi
+cert_path = certifi.where() # 例如: C:\...\crawler\Lib\site-packages\certifi\cacert.pem
+certifi_dir = os.path.dirname(cert_path)
 
 
 def build_optimized():
@@ -41,10 +45,9 @@ def build_optimized():
         '--hidden-import=email',  # 明确添加email模块
         '--hidden-import=http',  # 明确添加email模块
         '--hidden-import=html',  # 明确添加email模块
+        '--hidden-import=selenium',  # 明确添加email模块
         # 添加证书文件
-        '--add-data={};certifi'.format(
-            os.path.join(os.path.dirname(sys.executable), '../Lib/site-packages/certifi/cacert.pem')
-        ),
+        '--add-data', f'{certifi_dir}{os.pathsep}certifi',
         # 优化选项
         '--strip',  # 剥离符号（减小大小）
         '--noupx',  # 禁用UPX（有时会更小）
