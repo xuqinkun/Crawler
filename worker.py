@@ -18,7 +18,10 @@ class CrawlWorker(QObject):
     finished = pyqtSignal(str)  # 用户名
     error_occurred = pyqtSignal(str, str)  # 用户名, 错误信息
 
-    def __init__(self, username, agent, logger, max_workers=5, batch_size=100):
+    def __init__(self, username, agent, logger,
+                 max_workers=5,
+                 batch_size=100,
+                 use_bit=False):
         super().__init__()
         self.username = username
         self.logger = logger
@@ -29,6 +32,7 @@ class CrawlWorker(QObject):
         self.is_paused = False
         self.is_stopped = False
         self.first_running = True
+        self.use_bit = use_bit
         self.agent_pool = []
         # 添加暂停/恢复相关的同步对象
         self.max_workers = max_workers
@@ -68,6 +72,11 @@ class CrawlWorker(QObject):
     def _initialize_agent_pool(self) -> list:
         """初始化并发爬取的 Agent/Driver 实例池"""
         self.status_updated.emit(self.username, "初始化浏览器池...")
+        agent_pool = []
+        if not self.use_bit:
+            driver = get_chrome_driver()
+            agent_pool.append(AmazonAgent(driver=driver))
+            return agent_pool
 
         # 1. 获取所有可用的 BitBrowser ID
         browser_ids = get_all_browser_ids()
@@ -80,7 +89,7 @@ class CrawlWorker(QObject):
         target_ids = browser_ids[:self.max_workers]
         self.log_updated.emit(self.username, f"将使用 {len(target_ids)} 个浏览器窗口进行并发爬取。")
 
-        agent_pool = []
+
         failed_ids = []
 
         for i, browser_id in enumerate(target_ids):
@@ -97,8 +106,8 @@ class CrawlWorker(QObject):
                     # 3. 启动窗口并获取 Driver
                     self.log_updated.emit(self.username,
                                           f"正在启动浏览器 #{i + 1}/{len(target_ids)} (ID: {browser_id[:8]}...), 尝试 {retry + 1}/{max_retries}")
-
                     driver = get_bitbrowser_driver(browser_id)
+
 
                     if not driver:
                         continue

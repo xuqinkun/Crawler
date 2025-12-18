@@ -11,6 +11,21 @@ BITBROWSER_API_URL = "http://127.0.0.1:54345"  # 比特浏览器默认 API 地�
 CHROMEDRIVER_PATH = r"chromedriver.exe"  # 你的对应版本的驱动路径
 headers = {'Content-Type': 'application/json'}
 
+
+def get_chrome_driver():
+    """
+    启动 Chrome 浏览器并返回 Selenium Driver 对象
+    """
+    chrome_options = Options()
+    chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--log-level=3')
+    service = Service(executable_path=CHROMEDRIVER_PATH)
+
+    return webdriver.Chrome(service=service,options=chrome_options)
+
 def get_bitbrowser_driver(browser_id):
     """
     启动比特浏览器窗口并返回 Selenium Driver 对象

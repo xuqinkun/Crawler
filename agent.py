@@ -278,6 +278,11 @@ class AmazonAgent(QObject):
         """
         # 1. 导航到目标 URL
         url = product.url
+        if url is None:
+            product.invalid = True
+            product.completed = True
+            print(f'产品{product.product_id} 没有找到链接')
+            return product
         try:
             self.amazon_driver.get(url)  # 假设 self.amazon_driver 已初始化
         except Exception as e:

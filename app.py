@@ -29,6 +29,8 @@ def parse_arguments():
                        help='设置并发工作线程数（默认: 1）')
     parser.add_argument('--batch-size', '-b', type=int, default=100,
                        help='设置批量处理大小（默认: 100）')
+    parser.add_argument('--use-bit', '-u', type=bool, default=False,
+                       help='使用比特浏览器（默认: False）')
     return parser.parse_args()
 
 
@@ -613,7 +615,7 @@ class MainWindow(QWidget):
         self.batch_size = args.batch_size
 
         # 在状态栏显示当前配置
-        print(f"命令行配置: workers={self.max_workers}, batch_size={self.batch_size}")
+        print(f"命令行配置: workers={self.max_workers}, batch_size={self.batch_size}, use_bit={args.use_bit}")
         ensure_dir_exists(self.export_path)
         self.init_ui()
         self.load_accounts()
@@ -1262,7 +1264,8 @@ class MainWindow(QWidget):
                 agent=agent,
                 logger=logger,
                 max_workers=self.max_workers,
-                batch_size=self.batch_size
+                batch_size=self.batch_size,
+                use_bit=args.use_bit
             )
 
             self.crawl_threads[username] = QThread()
