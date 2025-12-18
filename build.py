@@ -49,7 +49,7 @@ def build_optimized():
         # 添加证书文件
         '--add-data', f'{certifi_dir}{os.pathsep}certifi',
         # 优化选项
-        '--strip',  # 剥离符号（减小大小）
+
         '--noupx',  # 禁用UPX（有时会更小）
     ]
 
