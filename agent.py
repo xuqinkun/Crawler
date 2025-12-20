@@ -344,6 +344,9 @@ class AmazonAgent(QObject):
 
                 # 4. 使用 BeautifulSoup 解析页面的最终 HTML 源代码
         # 替代了 main_soup = BeautifulSoup(main_page.text, 'html.parser')
+        if not isinstance(main_page_source, (str, bytes)):
+            logger.error(f"resp.text 返回了意外的类型: {main_page_source}")
+            return product
         main_soup = BeautifulSoup(main_page_source, 'html.parser')
 
         # --- 以下是您原有的 Beautiful Soup 解析逻辑 (无需修改) ---
@@ -507,6 +510,7 @@ class AmazonAgent(QObject):
 
     @staticmethod
     def extract_price(price_span):
+        logger.debug(f"price_span 类型: {type(price_span)}, 值: {price_span}")
         return float(price_span.text[1:].replace(',', ''))
 
     def stop(self):
@@ -518,9 +522,9 @@ class AmazonAgent(QObject):
 
 if __name__ == '__main__':
     from bit_browser import *
-    ids = get_all_browser_ids()
-    driver = get_bitbrowser_driver(ids[0])
+    # ids = get_all_browser_ids()
+    driver = get_chrome_driver()
     agent = AmazonAgent(driver=driver)
-    p = Product(url='https://www.amazon.com/dp/B0DY64FB25')
+    p = Product(url='https://www.amazon.com/dp/B08FCG912F?th=1')
     agent.start_craw(p)
     print(p)
