@@ -301,7 +301,7 @@ class AmazonDatabase:
                     availability=row['availability'],
                     completed=bool(row['completed']),
                     shipping_cost=row['shipping_cost'],
-                    shipping_from_amazon=bool(row['shipping_from_amazon']),
+                    shipping_from_amazon=row['shipping_from_amazon'] == '1',
                 )
                 products.append(product)
             return products

@@ -518,9 +518,9 @@ class AmazonAgent(QObject):
 
 if __name__ == '__main__':
     from bit_browser import *
-    ids = get_all_browser_ids()
-    driver = get_bitbrowser_driver(ids[0])
+    # ids = get_all_browser_ids()
+    driver = get_chrome_driver()
     agent = AmazonAgent(driver=driver)
-    p = Product(url='https://www.amazon.com/dp/B0DY64FB25')
+    p = Product(url='https://www.amazon.com/dp/B08FCG912F?th=1')
     agent.start_craw(p)
     print(p)

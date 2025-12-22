@@ -241,10 +241,6 @@ class CrawlWorker(QObject):
         tasks = list(product_uncompleted)
         agent_cycle = cycle(agent_pool)  # 循环使用 Agent 实例
         completed_products = []
-        failed_products = []
-        # 计算需要处理的批次
-        total_to_process = len(product_uncompleted)
-        processed_count = 0
         # 3. 使用线程池进行并发爬取
         self.status_updated.emit(self.username, "开始爬取商品")
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(agent_pool)) as executor:

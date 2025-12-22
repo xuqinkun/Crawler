@@ -60,7 +60,7 @@ class ExportWorker:
                     if product.invalid:
                         product_dict['备注'] = '异常'
                     elif product.availability:
-                        product_dict['价格'] = product.price
+                        product_dict['价格'] = str(product.price)
                         product_dict['运费'] = product.shipping_cost
                         product_dict['是否二手'] = '是' if product.used else '否'
                         product_dict['从亚马逊发货'] = '是' if product.shipping_from_amazon else '否'
