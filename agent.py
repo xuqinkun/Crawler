@@ -14,7 +14,7 @@ from cookies import CookieManager
 from crypto import get_encrypt_by_str, base64_encode
 from extractor import AmazonASINExtractor
 from logger import setup_concurrent_logging
-from product import Product
+from bean import Product
 import concurrent.futures
 from util import curr_milliseconds, ensure_dir_exists
 from selenium import webdriver

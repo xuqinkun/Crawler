@@ -3,7 +3,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
-from product import Product
+from bean import *
 from util import ensure_dir_exists
 
 
@@ -66,27 +66,18 @@ class AmazonDatabase:
     def create_device_table(self):
         """创建数据表"""
         try:
-            # 用户表
-            self.cursor.execute ("""
-            CREATE TABLE IF NOT EXISTS account (
-                username TEXT PRIMARY KEY,
-                password TEXT NOT NULL
-            );
-            """)
-
             # 商品信息表
             self.cursor.execute('''
-                CREATE TABLE IF NOT EXISTS admin (
+                CREATE TABLE IF NOT EXISTS device (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     device_name TEXT UNIQUE NOT NULL,
                     device_code TEXT UNIQUE NOT NULL,
-                    secrete_key TEXT NOT NULL,
-                    actived INTEGER DEFAULT 0,
+                    secrete_key TEXT,
+                    activated INTEGER DEFAULT 0,
                     expired INTEGER DEFAULT 0,
                     valid_days INTEGER DEFAULT 0,
-                    create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    active_at TIMESTAMP DEFAULT NULL,
-                    FOREIGN KEY (owner) REFERENCES accounts (username)
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    activated_at TIMESTAMP DEFAULT NULL
                 );
             ''')
 
@@ -144,6 +135,37 @@ class AmazonDatabase:
 
         except sqlite3.Error as e:
             print(f"插入商品错误: {e}")
+            return False
+
+    def upsert_device(self, device: Device):
+        """插入或更新设备信息"""
+        try:
+            self.cursor.execute('''
+            INSERT INTO device 
+            (device_name, device_code, secrete_key, activated, expired, 
+             valid_days, created_at, activated_at)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), ?)
+            ON CONFLICT(device_code) DO UPDATE SET
+                device_name = COALESCE(excluded.device_name, device_name),
+                secrete_key = COALESCE(excluded.secrete_key, secrete_key),
+                activated = COALESCE(excluded.activated, activated),
+                expired = COALESCE(excluded.expired, expired),
+                valid_days = COALESCE(excluded.valid_days, valid_days),
+                activated_at = COALESCE(excluded.activated_at, activated_at)
+                ''', (
+                device.device_name,
+                device.device_code,
+                device.secrete_key,
+                device.activated,
+                device.expired,
+                device.valid_days,
+                device.activated_at
+            ))
+            self.conn.commit()
+            return True
+
+        except sqlite3.Error as e:
+            print(f"插入设备信息错误: {e}")
             return False
 
     def batch_delete_products_by_ids(self, product_ids: List[str]):
@@ -313,6 +335,28 @@ class AmazonDatabase:
         except sqlite3.Error as e:
             print(f"获取爬取状态错误: {e}")
 
+    def get_all_devices(self):
+        try:
+            self.cursor.execute("SELECT * FROM device")
+            rows = self.cursor.fetchall()
+            devices = []
+            for row in rows:
+                device = Device(
+                    device_name=row['device_name'],
+                    device_code=row['device_code'],
+                    secrete_key=row['secrete_key'],
+                    activated=row['activated'] == 1,
+                    expired=row['expired'] == 1,
+                    valid_days=row['valid_days'],
+                    created_at=row['created_at'],
+                    activated_at=row['activated_at'],
+                )
+                devices.append(device)
+            return devices
+        except sqlite3.Error as e:
+            print(f"获取所有设备信息错误: {e}")
+            return []
+
     def get_all_products(self, owner: str) -> List[Product]:
         """获取爬取状态"""
         try:
@@ -331,7 +375,7 @@ class AmazonDatabase:
                     price=row['price'],
                     invalid=row['invalid'],
                     availability=row['availability'],
-                    completed=bool(row['completed']),
+                    completed=row['completed'] == 1,
                     shipping_cost=row['shipping_cost'],
                     shipping_from_amazon=row['shipping_from_amazon'] == '1',
                 )
@@ -409,6 +453,32 @@ class AmazonDatabase:
             print(f"删除{username}的产品错误: {e}")
             return  False
 
+    def delete_device_by_name(self, device_name):
+        """删除账户"""
+        try:
+            self.cursor.execute('''
+                DELETE FROM device WHERE device_name = ?
+            ''', (device_name,))
+            self.conn.commit()
+            print(f"成功删除设备{device_name}")
+            return True
+        except sqlite3.Error as e:
+            print(f"删除设备{device_name}错误: {e}")
+            return  False
+
+    def delete_device_by_code(self, device_code):
+        """删除账户"""
+        try:
+            self.cursor.execute('''
+                DELETE FROM device WHERE device_code = ?
+            ''', (device_code,))
+            self.conn.commit()
+            print(f"成功删除设备{device_code}")
+            return True
+        except sqlite3.Error as e:
+            print(f"删除设备{device_code}错误: {e}")
+            return  False
+
     def delete_account(self, username):
         """删除账户"""
         try:
@@ -427,11 +497,16 @@ class AmazonDatabase:
 if __name__ == "__main__":
     db = AmazonDatabase()
     db.connect()
-    db.drop()
-    # db.init()
-    # # 示例商品数据
-    # product = Product(1, 'aaa')
-    # db.insert_product(product)
-    # prod = db.get_product_detail()
-    # print(prod)
-    # db.close()
+    db.create_device_table()
+    d = Device(device_name='d', device_code='d')
+    d.secrete_key = 'xxxx'
+    d.activated = True
+    d.valid_days = 7
+    db.upsert_device(d)
+    devices = db.get_all_devices()
+    print(devices)
+    db.delete_device_by_name('d')
+    db.upsert_device(Device(device_name='a',
+                            device_code='a',
+                            valid_days=7))
+    print(db.get_all_devices())
