@@ -1,6 +1,7 @@
 import sys
 import json
 import uuid
+from db_util import AmazonDatabase
 from datetime import datetime, timedelta
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
@@ -12,23 +13,25 @@ class DeviceKeyManager(QMainWindow):
         super().__init__()
         self.devices = []  # 存储设备数据
         self.timer = QTimer()
+        self.db = AmazonDatabase()
+        self.db.connect()
+        self.db.create_device_table()
         self.timer.timeout.connect(self.update_timers)
-        self.timer.start(60000)  # 每分钟更新一次
+        self.timer.start(600)  # 每分钟更新一次
         self.load_data()
         self.init_ui()
 
     def load_data(self):
         """加载保存的数据"""
         try:
-            with open('devices.json', 'r') as f:
-                self.devices = json.load(f)
+            self.devices = self.db.get_all_devices()
         except:
             self.devices = []
 
     def save_data(self):
         """保存数据到文件"""
-        with open('devices.json', 'w') as f:
-            json.dump(self.devices, f, indent=2)
+        for device in self.devices:
+            self.db.upsert_device(device)
 
     def init_ui(self):
         """初始化UI界面"""
@@ -241,23 +244,24 @@ class DeviceKeyManager(QMainWindow):
 
         for i, device in enumerate(self.devices):
             # 设备名称
-            name_item = QTableWidgetItem(device['name'])
+            name_item = QTableWidgetItem(device.device_name)
             name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
 
             # 设备码
-            code_item = QTableWidgetItem(device['device_code'])
+            code_item = QTableWidgetItem(device.device_code)
             code_item.setFlags(code_item.flags() & ~Qt.ItemIsEditable)
 
             # 密钥
-            key_item = QTableWidgetItem(device['key'])
+            key_item = QTableWidgetItem(device.secrete_key)
             key_item.setFlags(key_item.flags() & ~Qt.ItemIsEditable)
 
             # 签发时间
-            issue_item = QTableWidgetItem(device['issue_time'])
+            issue_item = QTableWidgetItem(device.created_at)
             issue_item.setFlags(issue_item.flags() & ~Qt.ItemIsEditable)
 
             # 计算剩余时间
-            expire_time = datetime.strptime(device['expire_time'], '%Y-%m-%d %H:%M:%S')
+            expire_time = (datetime.strptime(device.created_at, '%Y-%m-%d %H:%M:%S')
+                           + timedelta(days=device.valid_days))
             remaining = expire_time - datetime.now()
 
             if remaining.total_seconds() <= 0:
@@ -291,9 +295,10 @@ class DeviceKeyManager(QMainWindow):
 
     def update_timers(self):
         """更新倒计时显示"""
+        print(f'update_timers: {self.devices}')
         for i in range(self.table.rowCount()):
             device = self.devices[i]
-            expire_time = datetime.strptime(device['expire_time'], '%Y-%m-%d %H:%M:%S')
+            expire_time = datetime.strptime(device.created_at, '%Y-%m-%d %H:%M:%S') + timedelta(days=device.valid_days)
             remaining = expire_time - datetime.now()
 
             if remaining.total_seconds() <= 0:
