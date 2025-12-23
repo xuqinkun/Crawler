@@ -23,7 +23,7 @@ class AmazonDatabase:
         except sqlite3.Error as e:
             print(f"数据库连接错误: {e}")
 
-    def init(self):
+    def create_product_table(self):
         """创建数据表"""
         try:
             # 用户表
@@ -54,6 +54,38 @@ class AmazonDatabase:
                     create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     owner TEXT,
+                    FOREIGN KEY (owner) REFERENCES accounts (username)
+                );
+            ''')
+
+            self.conn.commit()
+            print("数据表创建成功！")
+        except sqlite3.Error as e:
+            print(f"创建表错误: {e}")
+
+    def create_device_table(self):
+        """创建数据表"""
+        try:
+            # 用户表
+            self.cursor.execute ("""
+            CREATE TABLE IF NOT EXISTS account (
+                username TEXT PRIMARY KEY,
+                password TEXT NOT NULL
+            );
+            """)
+
+            # 商品信息表
+            self.cursor.execute('''
+                CREATE TABLE IF NOT EXISTS admin (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    device_name TEXT UNIQUE NOT NULL,
+                    device_code TEXT UNIQUE NOT NULL,
+                    secrete_key TEXT NOT NULL,
+                    actived INTEGER DEFAULT 0,
+                    expired INTEGER DEFAULT 0,
+                    valid_days INTEGER DEFAULT 0,
+                    create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    active_at TIMESTAMP DEFAULT NULL,
                     FOREIGN KEY (owner) REFERENCES accounts (username)
                 );
             ''')

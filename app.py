@@ -36,7 +36,7 @@ def parse_arguments():
 
 db = AmazonDatabase()
 db.connect()
-db.init()
+db.create_product_table()
 user_home = Path(os.path.expanduser('~'))
 
 logger = setup_concurrent_logging()

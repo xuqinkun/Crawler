@@ -182,7 +182,7 @@ class CrawlWorker(QObject):
         """执行爬取任务"""
         db = AmazonDatabase()
         db.connect()
-        db.init()
+        db.create_product_table()
 
         if self.first_running:
             self.first_running = False
