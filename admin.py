@@ -241,13 +241,17 @@ class DeviceKeyManager(QMainWindow):
         btn_del.setStyleSheet("background-color: #ffebee; color: red;")
         btn_del.clicked.connect(lambda _, d=device: self.handle_delete(d))
 
-        btn_export = QPushButton("激活")
-        btn_export.setStyleSheet("background-color: #e8f5e9; color: e1f5fe;")
-        btn_export.clicked.connect(lambda _, d=device: self.handle_export(d))
+        btn_activate = QPushButton("激活")
+        btn_activate.setStyleSheet("background-color: #e8f5e9; color: e1f5fe;")
+        btn_activate.clicked.connect(lambda _, d=device: self.handle_activate(d))
+        if device.activated_at:
+            btn_activate.setEnabled(False)
+            btn_activate.setStyleSheet("background-color: #e8e8e8; color: #666;")
+            btn_activate.setText("已激活")
 
         action_layout.addWidget(btn_edit)
         action_layout.addWidget(btn_renew)
-        action_layout.addWidget(btn_export)
+        action_layout.addWidget(btn_activate)
         action_layout.addWidget(btn_del)
         return action_widget
 
@@ -359,12 +363,39 @@ class DeviceKeyManager(QMainWindow):
                 self.perform_search()  # 使用perform_search刷新
                 QMessageBox.information(self, "成功", "设备已删除")
 
-    def handle_export(self, device):
+    def handle_activate(self, device):
+        """激活设备"""
         reply = QMessageBox.question(self, "确认激活",
                                      f"确定要激活设备 [{device.device_name}] 吗？\n激活设备后将开始计时剩余时间。",
                                      QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            device.activated_at = datetime.now()
+        if reply != QMessageBox.Yes:
+            return
+        # 复制密钥到剪贴板
+        clipboard = QApplication.clipboard()
+        clipboard.setText(device.secrete_key)
+
+        # 更新激活日期
+        device.activated_at = datetime.now()
+
+        # 保存到数据库
+        if self.db.upsert_device(device):
+            # 更新表格显示
+            row = self.display_devices.index(device)
+            activated_item = QTableWidgetItem(device.activated_at.strftime(DATETIME_PATTERN))
+            self.table.setItem(row, HEADER_TO_INDEX['激活日期'], activated_item)
+
+            # 更新操作按钮
+            action_widget = self.build_action_widget(device)
+            self.table.setCellWidget(row, HEADER_TO_INDEX['操作'], action_widget)
+
+            # 显示提示信息
+            self.statusBar().showMessage(f'设备 [{device.device_name}] 已激活，密钥已复制到剪贴板', 3000)
+
+            # 如果当前是按激活日期排序，重新排序
+            if self.sort_by.startswith('activated'):
+                self.apply_sort()
+        else:
+            QMessageBox.warning(self, "错误", "激活失败，请检查数据库连接")
 
 
     def delete_device(self, device):
