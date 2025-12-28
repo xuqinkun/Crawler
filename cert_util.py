@@ -105,7 +105,7 @@ def generate_device_code(mac_address=None, custom_salt="device_key_system"):
 def digest(text: str):
     return hashlib.sha256(text.encode('utf-8')).hexdigest()
 
-def generate_key(device_code, custom_salt="key_generation_salt"):
+def device_code_with_digest():
     """
     基于设备码生成密钥
 
@@ -118,23 +118,8 @@ def generate_key(device_code, custom_salt="key_generation_salt"):
     """
     try:
         # 获取当前时间戳
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
-
-        # 组合设备码、时间戳和盐值
-        combined_string = f"{device_code}{timestamp}{custom_salt}"
-
-        # 使用SHA256生成哈希值
-        hash_object = hashlib.sha256(combined_string.encode())
-        hex_digest = hash_object.hexdigest()
-
-        # 取前16位作为密钥
-        key = hex_digest[:16]
-
-        # 每4位用连字符分隔，便于识别
-        formatted_key = '-'.join([key[i:i + 4] for i in range(0, 16, 4)])
-
-        return formatted_key.upper()
-
+        mac = get_mac_address()
+        return digest(mac)
     except Exception as e:
         print(f"生成密钥失败: {e}")
         # 如果生成失败，返回一个简化的密钥作为后备
@@ -161,11 +146,8 @@ def decode_key(encoded_key: str) -> Device:
                   device_code=device_info['device_code'],
                   created_at=datetime.strptime(device_info['created_at'], DATETIME_PATTERN),
                   valid_days=device_info['valid_days'],
-                  activated_at=device_info['activated_at'])
+                  activated_at=datetime.strptime(device_info['activated_at'], DATETIME_PATTERN))
 
 
 if __name__ == '__main__':
-    mac = get_mac_address()
-    d = digest(mac)
-    encoded_key = generate_key_from_device('a', d, datetime.now(), 7)
-    print(decode_key(encoded_key))
+    print(device_code_with_digest())

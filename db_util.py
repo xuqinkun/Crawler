@@ -58,7 +58,6 @@ class AmazonDatabase:
             ''')
 
             self.conn.commit()
-            print("数据表创建成功！")
         except sqlite3.Error as e:
             print(f"创建表错误: {e}")
 
@@ -81,7 +80,6 @@ class AmazonDatabase:
             ''')
 
             self.conn.commit()
-            print("数据表创建成功！")
         except sqlite3.Error as e:
             print(f"创建表错误: {e}")
 
@@ -347,12 +345,12 @@ class AmazonDatabase:
                     activated=row['activated'] == 1,
                     expired=row['expired'] == 1,
                     valid_days=row['valid_days'],
-                    created_at=datetime.strptime(row['created_at'], DATETIME_PATTERN) if row['created_at'] else None,
-                    activated_at=datetime.strptime(row['activated_at'], DATETIME_PATTERN) if row['activated_at'] else None,
+                    created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None,
+                    activated_at=datetime.fromisoformat(row['activated_at']) if row['activated_at'] else None,
                 )
                 devices.append(device)
             return devices
-        except sqlite3.Error as e:
+        except Exception as e:
             print(f"获取所有设备信息错误: {e}")
             return []
 

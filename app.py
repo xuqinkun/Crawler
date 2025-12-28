@@ -5,6 +5,7 @@ import platform
 import subprocess
 import sys
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import requests
@@ -14,6 +15,8 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit, QToolTip,
                              QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox, QListWidget, QListWidgetItem,
                              QFileDialog, QFrame, QProgressBar, QTextEdit)
 
+import cert_util
+import util
 from agent import Agent
 from constant import *
 from db_util import AmazonDatabase
@@ -1722,6 +1725,44 @@ def excepthook(exctype, value, traceback):
 # 在主函数中设置
 if __name__ == '__main__':
     # 设置全局异常处理
+    device_code = cert_util.device_code_with_digest()
+    print(f"设备代码: {device_code}")
+    device = None
+    activation_code = util.load_active_code()
+    if activation_code:
+        try:
+            device = cert_util.decode_key(activation_code)
+            if device_code != device.device_code:
+                print(f"设备代码不匹配")
+        except Exception as e:
+            print(f"激活码无效: {e}")
+    while not activation_code:
+        activation_code = input("请输入激活码:\n").strip()
+        if not activation_code:
+            print("激活码不能为空")
+            continue
+        try:
+            device = cert_util.decode_key(activation_code)
+            if device_code != device.device_code:
+                print(f"设备代码不匹配")
+                continue
+            util.save_active_code(activation_code)
+            break
+        except Exception as e:
+            print(f"激活码无效: {e}")
+    if not device:
+        print(f"设备未激活")
+        sys.exit(1)
+    remaining = device.activated_at + timedelta(device.valid_days) - datetime.now()
+    if remaining.total_seconds() <= 0:
+        print(f"激活码已过期")
+        sys.exit(1)
+    else:
+        hours = remaining.seconds // 3600
+        minutes = (remaining.seconds % 3600) // 60
+        remaining_text = f"{remaining.days}天{hours}小时{minutes}分"
+
+        print(f"设备已激活，剩余时间: {remaining_text}")
     sys.excepthook = excepthook
 
     app = QApplication(sys.argv)
