@@ -491,6 +491,18 @@ class AmazonDatabase:
             print(f"删除账户错误: {e}")
             return  False
 
+    def extend_device_life(self, device_code, extra_days):
+        """续期：增加有效天数"""
+        try:
+            self.cursor.execute('''
+                UPDATE device SET valid_days = valid_days + ? WHERE device_code = ?
+            ''', (extra_days, device_code))
+            self.conn.commit()
+            return True
+        except sqlite3.Error as e:
+            print(f"续期错误: {e}")
+            return False
+
 
 # 使用示例
 if __name__ == "__main__":

@@ -270,7 +270,7 @@ class DeviceKeyManager(QMainWindow):
                                             device.device_name)
         if ok and new_name:
             device.device_name = new_name
-            if self.db.update_device(device):
+            if self.db.upsert_device(device):
                 QMessageBox.information(self, "成功", "设备名称已更新")
                 self.load_data()
 
@@ -289,8 +289,12 @@ class DeviceKeyManager(QMainWindow):
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
             if self.db.delete_device_by_code(device.device_code):
-                self.all_devices.remove(device)
+                self.delete_device(device)
                 QMessageBox.information(self, "成功", "设备已删除")
+
+    def delete_device(self, device):
+        self.all_devices.remove(device)
+        self.display_devices.remove(device)
 
     def renew_selected(self):
         """为选中设备续期"""
@@ -386,7 +390,7 @@ class DeviceKeyManager(QMainWindow):
             key_item.setFlags(key_item.flags() & ~Qt.ItemIsEditable)
 
             # 签发时间
-            issue_item = QTableWidgetItem(str(device.created_at))
+            issue_item = QTableWidgetItem(device.created_at.strftime(DATETIME_PATTERN))
             issue_item.setFlags(issue_item.flags() & ~Qt.ItemIsEditable)
 
             # 计算剩余时间
