@@ -9,6 +9,9 @@ from constant import DATETIME_PATTERN
 from bean import Device
 from db_util import AmazonDatabase
 
+HEADERS = ["设备名称", "设备码", "密钥", "创建日期", "激活日期", "剩余时间", "操作"]
+HEADER_TO_INDEX = {header: index for index, header in enumerate(HEADERS)}
+
 
 class DeviceKeyManager(QMainWindow):
     def __init__(self):
@@ -70,7 +73,7 @@ class DeviceKeyManager(QMainWindow):
         self.db.upsert_device(device)
 
     def init_ui(self):
-        self.setWindowTitle("设备授权管理系统 (增强版)")
+        self.setWindowTitle("设备授权管理系统")
         self.resize(1100, 700)
 
         main_widget = QWidget()
@@ -134,11 +137,12 @@ class DeviceKeyManager(QMainWindow):
         # --- 2. 表格区域 ---
         self.table = QTableWidget()
         # 增加一列：操作
-        self.table.setColumnCount(6)
-        self.table.setHorizontalHeaderLabels(["设备名称", "设备码", "密钥", "创建日期", "剩余时间", "操作"])
+        self.table.setColumnCount(len(HEADERS))
+        self.table.setHorizontalHeaderLabels(HEADERS)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
-        self.table.setColumnWidth(5, 220)
+        option_index = HEADER_TO_INDEX.get('操作')
+        self.table.horizontalHeader().setSectionResizeMode(option_index, QHeaderView.Fixed)
+        self.table.setColumnWidth(option_index, 220)
         self.table.cellClicked.connect(self.copy_key_to_clipboard)
         layout.addWidget(self.table)
 
@@ -176,7 +180,10 @@ class DeviceKeyManager(QMainWindow):
                 continue
             # 搜索到期日期
             if days_limit > 0:
-                remaining = d.created_at - datetime.now() + timedelta(days=d.valid_days)
+                if not d.activated:
+                    remaining = timedelta(days=d.valid_days)
+                else:
+                    remaining = d.activated_at - datetime.now() + timedelta(days=d.valid_days)
                 if remaining.days > days_limit:
                     continue
 
@@ -198,17 +205,21 @@ class DeviceKeyManager(QMainWindow):
             self.table.insertRow(i)
 
             # 基本数据列
-            self.table.setItem(i, 0, QTableWidgetItem(device.device_name))
-            self.table.setItem(i, 1, QTableWidgetItem(device.device_code))
-            self.table.setItem(i, 2, QTableWidgetItem(device.secrete_key))
-            self.table.setItem(i, 3, QTableWidgetItem(device.created_at.strftime(DATETIME_PATTERN)))
+            self.table.setItem(i, HEADER_TO_INDEX['设备名称'], QTableWidgetItem(device.device_name))
+            self.table.setItem(i, HEADER_TO_INDEX['设备码'], QTableWidgetItem(device.device_code))
+            self.table.setItem(i, HEADER_TO_INDEX['密钥'], QTableWidgetItem(device.secrete_key))
+            self.table.setItem(i, HEADER_TO_INDEX['创建日期'], QTableWidgetItem(device.created_at.strftime(DATETIME_PATTERN)))
+            if device.activated:
+                self.table.setItem(i, HEADER_TO_INDEX['激活日期'], QTableWidgetItem(device.activated_at.strftime(DATETIME_PATTERN)))
+            else:
+                self.table.setItem(i, HEADER_TO_INDEX['激活日期'], QTableWidgetItem('未激活'))
 
             # 剩余时间列 (由定时器更新)
             remaining_item = QTableWidgetItem()
-            self.table.setItem(i, 4, remaining_item)
+            self.table.setItem(i, HEADER_TO_INDEX['剩余时间'], remaining_item)
 
             action_widget = self.build_action_widget(device)
-            self.table.setCellWidget(i, 5, action_widget)
+            self.table.setCellWidget(i, HEADER_TO_INDEX['操作'], action_widget)
 
         self.update_timers()  # 立即填充倒计时
 
@@ -221,14 +232,22 @@ class DeviceKeyManager(QMainWindow):
         btn_edit = QPushButton("修改")
         btn_edit.setStyleSheet("background-color: #e1f5fe;")
         btn_edit.clicked.connect(lambda _, d=device: self.handle_edit(d))
+
         btn_renew = QPushButton("续期")
         btn_renew.setStyleSheet("background-color: #e8f5e9;")
         btn_renew.clicked.connect(lambda _, d=device: self.handle_renew(d))
+
         btn_del = QPushButton("删除")
         btn_del.setStyleSheet("background-color: #ffebee; color: red;")
         btn_del.clicked.connect(lambda _, d=device: self.handle_delete(d))
+
+        btn_export = QPushButton("激活")
+        btn_export.setStyleSheet("background-color: #e8f5e9; color: e1f5fe;")
+        btn_export.clicked.connect(lambda _, d=device: self.handle_export(d))
+
         action_layout.addWidget(btn_edit)
         action_layout.addWidget(btn_renew)
+        action_layout.addWidget(btn_export)
         action_layout.addWidget(btn_del)
         return action_widget
 
@@ -340,6 +359,14 @@ class DeviceKeyManager(QMainWindow):
                 self.perform_search()  # 使用perform_search刷新
                 QMessageBox.information(self, "成功", "设备已删除")
 
+    def handle_export(self, device):
+        reply = QMessageBox.question(self, "确认激活",
+                                     f"确定要激活设备 [{device.device_name}] 吗？\n激活设备后将开始计时剩余时间。",
+                                     QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            device.activated_at = datetime.now()
+
+
     def delete_device(self, device):
         self.all_devices.remove(device)
         self.display_devices.remove(device)
@@ -429,7 +456,7 @@ class DeviceKeyManager(QMainWindow):
 
     def copy_key_to_clipboard(self, row, column):
         """点击密钥列时自动复制到剪贴板"""
-        if column == 2:  # 密钥列在表格中的索引为 2
+        if column == HEADER_TO_INDEX['密钥']:  # 密钥列在表格中的索引为 2
             item = self.table.item(row, column)
             if item:
                 key_text = item.text()
@@ -444,7 +471,10 @@ class DeviceKeyManager(QMainWindow):
         """更新倒计时显示"""
         for i in range(self.table.rowCount()):
             device = self.display_devices[i]  # 使用display_devices
-            remaining = device.created_at - datetime.now() + timedelta(days=device.valid_days)
+            if device.activated_at:
+                remaining = device.activated_at - datetime.now() + timedelta(days=device.valid_days)
+            else:
+                remaining = timedelta(days=device.valid_days)
 
             if remaining.total_seconds() <= 0:
                 remaining_text = "已过期"
@@ -458,7 +488,7 @@ class DeviceKeyManager(QMainWindow):
                 remaining_text = f"{remaining.days}天{hours}小时"
                 color = QColor(200, 255, 200)
 
-            item = self.table.item(i, 4)
+            item = self.table.item(i, HEADER_TO_INDEX['剩余时间'])
             if item:
                 item.setText(remaining_text)
                 item.setBackground(color)
