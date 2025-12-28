@@ -22,7 +22,7 @@ class DeviceKeyManager(QMainWindow):
 
         self.load_data()
         self.init_ui()
-        self.perform_search()
+        self.refresh_table()
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_timers)
@@ -113,6 +113,7 @@ class DeviceKeyManager(QMainWindow):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
         self.table.setColumnWidth(5, 220)
+        self.table.cellClicked.connect(self.copy_key_to_clipboard)
         layout.addWidget(self.table)
 
     def perform_search(self):
@@ -425,6 +426,19 @@ class DeviceKeyManager(QMainWindow):
 
             # 设置行高
             self.table.setRowHeight(i, 30)
+
+    def copy_key_to_clipboard(self, row, column):
+        """点击密钥列时自动复制到剪贴板"""
+        if column == 2:  # 密钥列在表格中的索引为 2
+            item = self.table.item(row, column)
+            if item:
+                key_text = item.text()
+                # 获取系统剪贴板并设置文本内容
+                clipboard = QApplication.clipboard()
+                clipboard.setText(key_text)
+
+                # 在状态栏给予提示，增强用户体验
+                self.statusBar().showMessage(f'密钥已复制到剪贴板: {key_text}', 3000)
 
     def update_timers(self):
         """更新倒计时显示"""
