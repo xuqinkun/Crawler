@@ -1,39 +1,44 @@
+import logging
 import sys
-import uuid
 from datetime import datetime, timedelta
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
-
+from constant import  DATETIME_PATTERN
 from bean import Device
-from constant import DATETIME_PATTERN
 from db_util import AmazonDatabase
 
 
 class DeviceKeyManager(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.devices = []  # 存储设备数据
-        self.timer = QTimer()
+        self.all_devices = []  # 存储从数据库加载的所有数据
+        self.display_devices = []  # 存储当前过滤后显示的数据
+
         self.db = AmazonDatabase()
         self.db.connect()
         self.db.create_device_table()
-        self.timer.timeout.connect(self.update_timers)
-        self.timer.start(600)  # 每分钟更新一次
+
         self.load_data()
         self.init_ui()
+        self.perform_search()
+
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_timers)
+        self.timer.start(1000)
 
     def load_data(self):
         """加载保存的数据"""
         try:
-            self.devices = self.db.get_all_devices()
+            self.all_devices = self.db.get_all_devices()
         except:
-            self.devices = []
+            logging.info("加载设备列表失败")
+            self.all_devices = []
 
     def save_data(self):
         """保存数据到文件"""
-        for device in self.devices:
+        for device in self.all_devices:
             self.db.upsert_device(device)
 
     def update_devices(self, devices):
@@ -41,62 +46,145 @@ class DeviceKeyManager(QMainWindow):
         for device in devices:
             self.db.upsert_device(device)
 
+    def delete_devices(self, devices):
+        """保存数据到文件"""
+        for device_code in devices:
+            self.db.delete_device_by_code(device_code)
+
     def insert_device(self, device):
         """保存数据到文件"""
         self.db.upsert_device(device)
 
     def init_ui(self):
-        """初始化UI界面"""
-        self.setWindowTitle('设备密钥管理系统')
-        self.setGeometry(100, 100, 1000, 600)
+        self.setWindowTitle("设备授权管理系统 (增强版)")
+        self.resize(1000, 700)
 
-        # 主窗口部件
         main_widget = QWidget()
         self.setCentralWidget(main_widget)
         layout = QVBoxLayout(main_widget)
 
-        # 顶部按钮区域
+        # --- 顶部功能按钮区域 (保留原功能) ---
         top_layout = QHBoxLayout()
-
         self.add_btn = QPushButton('添加新设备')
         self.add_btn.clicked.connect(self.add_device)
-        self.add_btn.setFixedHeight(40)
-
-        self.renew_btn = QPushButton('续期选中设备')
+        self.renew_btn = QPushButton('批量续期选中')
         self.renew_btn.clicked.connect(self.renew_selected)
-        self.renew_btn.setFixedHeight(40)
-
-        self.delete_btn = QPushButton('删除选中设备')
+        self.delete_btn = QPushButton('批量删除选中')
         self.delete_btn.clicked.connect(self.delete_selected)
-        self.delete_btn.setFixedHeight(40)
 
         top_layout.addWidget(self.add_btn)
         top_layout.addWidget(self.renew_btn)
         top_layout.addWidget(self.delete_btn)
-        top_layout.addStretch()
 
-        # 设备表格
-        self.table = QTableWidget()
-        self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(['设备名称', '设备码', '密钥', '签发时间', '剩余时间'])
-        self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.setSelectionBehavior(QTableView.SelectRows)
-        self.table.setAlternatingRowColors(True)
+        # --- 1. 搜索区域 ---
 
-        # 设置列宽
-        self.table.setColumnWidth(0, 150)
-        self.table.setColumnWidth(1, 250)
-        self.table.setColumnWidth(2, 200)
-        self.table.setColumnWidth(3, 150)
+        self.search_name = QLineEdit()
+        self.search_name.setPlaceholderText("按设备名称搜索...")
+        self.search_name.textChanged.connect(self.perform_search)
 
-        # 状态栏
-        self.statusBar().showMessage('就绪')
+        self.search_code = QLineEdit()
+        self.search_code.setPlaceholderText("按设备码搜索...")
+        self.search_code.textChanged.connect(self.perform_search)
+
+        self.search_days = QSpinBox()
+        self.search_days.setRange(0, 9999)
+        self.search_days.setPrefix("到期天数 <= ")
+        self.search_days.setSpecialValueText("到期天数 (全部)")
+        self.search_days.valueChanged.connect(self.perform_search)
+
+        btn_refresh = QPushButton("重置搜索")
+        btn_refresh.clicked.connect(self.reset_search)
+
+        top_layout.addWidget(QLabel("名称:"))
+        top_layout.addWidget(self.search_name)
+        top_layout.addWidget(QLabel("设备码:"))
+        top_layout.addWidget(self.search_code)
+        top_layout.addWidget(self.search_days)
+        top_layout.addWidget(btn_refresh)
 
         layout.addLayout(top_layout)
+
+
+        # --- 2. 表格区域 ---
+        self.table = QTableWidget()
+        # 增加一列：操作
+        self.table.setColumnCount(6)
+        self.table.setHorizontalHeaderLabels(["设备名称", "设备码", "密钥", "创建日期", "剩余时间", "操作"])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.Fixed)
+        self.table.setColumnWidth(5, 220)
         layout.addWidget(self.table)
 
-        # 刷新表格数据
-        self.refresh_table()
+    def perform_search(self):
+        """执行模糊搜索和到期天数过滤"""
+        name_query = self.search_name.text().lower()
+        code_query = self.search_code.text().lower()
+        days_limit = self.search_days.value()
+
+        self.display_devices = []
+        for d in self.all_devices:
+            # 模糊匹配名称
+            if name_query and name_query not in d.device_name.lower():
+                continue
+            # 模糊匹配设备码
+            if code_query and code_query not in d.device_code.lower():
+                continue
+            # 搜索到期日期
+            if days_limit > 0:
+                remaining = d.created_at - datetime.now() + timedelta(days=d.valid_days)
+                if remaining.days > days_limit:
+                    continue
+
+            self.display_devices.append(d)
+
+        self.update_table_display()
+
+    def reset_search(self):
+        self.search_name.clear()
+        self.search_code.clear()
+        self.search_days.setValue(0)
+        self.perform_search()
+
+    def update_table_display(self):
+        """渲染表格内容"""
+        self.table.setRowCount(0)
+        for i, device in enumerate(self.display_devices):
+            self.table.insertRow(i)
+
+            # 基本数据列
+            self.table.setItem(i, 0, QTableWidgetItem(device.device_name))
+            self.table.setItem(i, 1, QTableWidgetItem(device.device_code))
+            self.table.setItem(i, 2, QTableWidgetItem(device.secrete_key))
+            self.table.setItem(i, 3, QTableWidgetItem(device.created_at.strftime(DATETIME_PATTERN)))
+
+            # 剩余时间列 (由定时器更新)
+            remaining_item = QTableWidgetItem()
+            self.table.setItem(i, 4, remaining_item)
+
+            action_widget = self.build_action_widget(device)
+            self.table.setCellWidget(i, 5, action_widget)
+
+        self.update_timers()  # 立即填充倒计时
+
+    def build_action_widget(self, device):
+        # --- 操作功能键 ---
+        action_widget = QWidget()
+        action_layout = QHBoxLayout(action_widget)
+        action_layout.setContentsMargins(2, 2, 2, 2)
+        action_layout.setSpacing(5)
+        btn_edit = QPushButton("修改")
+        btn_edit.setStyleSheet("background-color: #e1f5fe;")
+        btn_edit.clicked.connect(lambda _, d=device: self.handle_edit(d))
+        btn_renew = QPushButton("续期")
+        btn_renew.setStyleSheet("background-color: #e8f5e9;")
+        btn_renew.clicked.connect(lambda _, d=device: self.handle_renew(d))
+        btn_del = QPushButton("删除")
+        btn_del.setStyleSheet("background-color: #ffebee; color: red;")
+        btn_del.clicked.connect(lambda _, d=device: self.handle_delete(d))
+        action_layout.addWidget(btn_edit)
+        action_layout.addWidget(btn_renew)
+        action_layout.addWidget(btn_del)
+        return action_widget
 
     def add_device(self):
         """添加新设备"""
@@ -164,7 +252,7 @@ class DeviceKeyManager(QMainWindow):
                             created_at=datetime.now(),
                             valid_days=valid_days)
 
-            self.devices.append(device)
+            self.all_devices.append(device)
             self.insert_device(device)
             self.refresh_table()
             self.statusBar().showMessage(f'已添加设备: {name}')
@@ -174,6 +262,35 @@ class DeviceKeyManager(QMainWindow):
         cancel_btn.clicked.connect(dialog.reject)
 
         dialog.exec_()
+
+    # --- 功能操作逻辑 ---
+
+    def handle_edit(self, device):
+        new_name, ok = QInputDialog.getText(self, "修改信息", "请输入新的设备名称:", QLineEdit.Normal,
+                                            device.device_name)
+        if ok and new_name:
+            device.device_name = new_name
+            if self.db.update_device(device):
+                QMessageBox.information(self, "成功", "设备名称已更新")
+                self.load_data()
+
+    def handle_renew(self, device):
+        days, ok = QInputDialog.getInt(self, "设备续期", "请输入增加的天数:", 30, 1, 3650)
+        if ok:
+            if self.db.extend_device_life(device.device_code, days):
+                # 同步更新本地内存数据，避免重新加载全量数据闪烁
+                device.valid_days += days
+                QMessageBox.information(self, "成功", f"设备已成功续期 {days} 天")
+                self.update_table_display()
+
+    def handle_delete(self, device):
+        reply = QMessageBox.question(self, "确认删除",
+                                     f"确定要删除设备 [{device.device_name}] 吗？\n该操作不可撤销。",
+                                     QMessageBox.Yes | QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            if self.db.delete_device_by_code(device.device_code):
+                self.all_devices.remove(device)
+                QMessageBox.information(self, "成功", "设备已删除")
 
     def renew_selected(self):
         """为选中设备续期"""
@@ -213,7 +330,7 @@ class DeviceKeyManager(QMainWindow):
             devices = []
             for row in selected_rows:
                 index = row.row()
-                device = self.devices[index]
+                device = self.all_devices[index]
 
                 # 更新过期时间
                 device.valid_days = device.valid_days + days
@@ -241,19 +358,21 @@ class DeviceKeyManager(QMainWindow):
 
         if reply == QMessageBox.Yes:
             # 从后往前删除，避免索引变化
+            devices = []
             for row in sorted(selected_rows, key=lambda x: x.row(), reverse=True):
                 index = row.row()
-                self.devices.pop(index)
+                d = self.all_devices.pop(index)
+                devices.append(d.device_code)
 
-            self.save_data()
+            self.delete_devices(devices)
             self.refresh_table()
             self.statusBar().showMessage(f'已删除 {len(selected_rows)} 台设备')
 
     def refresh_table(self):
         """刷新表格数据"""
-        self.table.setRowCount(len(self.devices))
+        self.table.setRowCount(len(self.all_devices))
 
-        for i, device in enumerate(self.devices):
+        for i, device in enumerate(self.all_devices):
             # 设备名称
             name_item = QTableWidgetItem(device.device_name)
             name_item.setFlags(name_item.flags() & ~Qt.ItemIsEditable)
@@ -298,6 +417,7 @@ class DeviceKeyManager(QMainWindow):
             self.table.setItem(i, 2, key_item)
             self.table.setItem(i, 3, issue_item)
             self.table.setItem(i, 4, remaining_item)
+            self.table.setCellWidget(i, 5, self.build_action_widget(device))
 
             # 设置行高
             self.table.setRowHeight(i, 30)
@@ -305,7 +425,7 @@ class DeviceKeyManager(QMainWindow):
     def update_timers(self):
         """更新倒计时显示"""
         for i in range(self.table.rowCount()):
-            device = self.devices[i]
+            device = self.all_devices[i]
             remaining = device.created_at - datetime.now() + timedelta(days=device.valid_days)
 
             if remaining.total_seconds() <= 0:
