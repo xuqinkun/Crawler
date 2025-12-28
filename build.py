@@ -11,6 +11,7 @@ certifi_dir = os.path.dirname(cert_path)
 def build_optimized():
     args = [
         'app.py',
+        # 'admin.py',
         '--name=AmazonCrawler',
         '--onefile',
         '--windowed',
