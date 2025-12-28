@@ -1,8 +1,13 @@
+import base64
 import hashlib
+import json
 import subprocess
 import uuid
 import locale
 from datetime import datetime
+
+from bean import Device
+from constant import DATETIME_PATTERN
 
 system_encoding = locale.getpreferredencoding()
 
@@ -136,10 +141,31 @@ def generate_key(device_code, custom_salt="key_generation_salt"):
         return str(uuid.uuid4()).replace('-', '')[:16].upper()
 
 
+def generate_key_from_device(device_name: str, device_code: str, created_at: datetime, valid_days: int):
+    cert = {"device_name": device_name,
+            "device_code": device_code,
+            "created_at": created_at.strftime(DATETIME_PATTERN),
+            "activated_at": datetime.now().strftime(DATETIME_PATTERN),
+            "valid_days": valid_days}
+    cert_str = json.dumps(cert)
+
+    cert_str_padded = cert_str + '=' * (4 - len(cert_str) % 4)
+    cert_data = base64.b64encode(cert_str_padded.encode('utf-8'))
+    return cert_data.decode('utf-8')
+
+
+def decode_key(encoded_key: str) -> Device:
+    plain_text = base64.b64decode(encoded_key).decode('utf-8').rstrip('=')
+    device_info = json.loads(plain_text)
+    return Device(device_name=device_info['device_name'],
+                  device_code=device_info['device_code'],
+                  created_at=datetime.strptime(device_info['created_at'], DATETIME_PATTERN),
+                  valid_days=device_info['valid_days'],
+                  activated_at=device_info['activated_at'])
+
+
 if __name__ == '__main__':
     mac = get_mac_address()
-    print(mac)
-    device_code = generate_device_code()
-    print(device_code)
-    # print(generate_key(device_code=device_code))
-    print(digest(mac))
+    d = digest(mac)
+    encoded_key = generate_key_from_device('a', d, datetime.now(), 7)
+    print(decode_key(encoded_key))

@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
+
+import cert_util
 from constant import  DATETIME_PATTERN
 from bean import Device
 from db_util import AmazonDatabase
@@ -247,10 +249,12 @@ class DeviceKeyManager(QMainWindow):
             # 设置有效期
             duration_text = duration_combo.currentText()
             valid_days = int(duration_text.replace('天', ''))
+            now = datetime.now()
+            secret_key = cert_util.generate_key_from_device(name, device_code, now, valid_days)
             device = Device(device_name=name,
                             device_code=device_code,
-                            secrete_key='xxx',
-                            created_at=datetime.now(),
+                            secrete_key=secret_key,
+                            created_at=now,
                             valid_days=valid_days)
 
             self.all_devices.append(device)
