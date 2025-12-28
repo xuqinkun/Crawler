@@ -310,9 +310,15 @@ class DeviceKeyManager(QMainWindow):
             if not name:
                 QMessageBox.warning(self, '警告', '请输入设备名称！')
                 return
+            if self.db.get_device_by_name(name):
+                QMessageBox.warning(self, '警告', '该设备名称已存在！')
+                return
             device_code = device_input.text().strip()
             if not device_code:
                 QMessageBox.warning(self, '警告', '请输入设备代码！')
+                return
+            if self.db.get_device_by_code(device_code):
+                QMessageBox.warning(self, '警告', '该设备代码已存在！')
                 return
             # 设置有效期
             duration_text = duration_combo.currentText()

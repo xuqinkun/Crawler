@@ -332,6 +332,53 @@ class AmazonDatabase:
         except sqlite3.Error as e:
             print(f"获取爬取状态错误: {e}")
 
+    def get_device_by_name(self, device_name: str):
+        """获取爬取状态"""
+        try:
+            self.cursor.execute('''
+                SELECT * from device
+                where device_name = ?;
+            ''', (device_name,))
+            row = self.cursor.fetchone()
+            if not row:
+                return None
+            return Device(
+                    device_name=row['device_name'],
+                    device_code=row['device_code'],
+                    secrete_key=row['secrete_key'],
+                    activated=row['activated'] == 1,
+                    expired=row['expired'] == 1,
+                    valid_days=row['valid_days'],
+                    created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None,
+                    activated_at=datetime.fromisoformat(row['activated_at']) if row['activated_at'] else None,
+                )
+        except Exception as e:
+            print(f"获取爬取状态错误: {e}")
+            return None
+
+    def get_device_by_code(self, device_code: str):
+        """获取爬取状态"""
+        try:
+            self.cursor.execute('''
+                SELECT * from device
+                where device_code =?;
+            ''', (device_code,))
+            row = self.cursor.fetchone()
+            if not row:
+                return None
+            return Device(
+                    device_name=row['device_name'],
+                    device_code=row['device_code'],
+                    secrete_key=row['secrete_key'],
+                    activated=row['activated'] == 1,
+                    expired=row['expired'] == 1,
+                    valid_days=row['valid_days'],
+                    created_at=datetime.fromisoformat(row['created_at']) if row['created_at'] else None,
+                    activated_at=datetime.fromisoformat(row['activated_at']) if row['activated_at'] else None,
+                )
+        except sqlite3.Error as e:
+            print(f"获取爬取状态错误: {e}")
+
     def get_all_devices(self):
         try:
             self.cursor.execute("SELECT * FROM device")
