@@ -1,8 +1,7 @@
 import sqlite3
-from datetime import datetime
 from pathlib import Path
 from typing import List
-
+from constant import DATETIME_PATTERN
 from bean import *
 from util import ensure_dir_exists
 
@@ -348,8 +347,8 @@ class AmazonDatabase:
                     activated=row['activated'] == 1,
                     expired=row['expired'] == 1,
                     valid_days=row['valid_days'],
-                    created_at=row['created_at'],
-                    activated_at=row['activated_at'],
+                    created_at=datetime.strptime(row['created_at'], DATETIME_PATTERN) if row['created_at'] else None,
+                    activated_at=datetime.strptime(row['activated_at'], DATETIME_PATTERN) if row['activated_at'] else None,
                 )
                 devices.append(device)
             return devices

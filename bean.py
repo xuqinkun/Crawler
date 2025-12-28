@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import time
+from datetime import time, datetime
 
 
 @dataclass
@@ -32,5 +32,5 @@ class Device:
     activated: bool=None
     expired: bool=None
     valid_days: int=None
-    created_at: time=None
-    activated_at: time=None
+    created_at: datetime=None
+    activated_at: datetime=None

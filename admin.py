@@ -1,11 +1,14 @@
 import sys
-import json
 import uuid
-from db_util import AmazonDatabase
 from datetime import datetime, timedelta
-from PyQt5.QtWidgets import *
+
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
+from PyQt5.QtWidgets import *
+
+from bean import Device
+from constant import DATETIME_PATTERN
+from db_util import AmazonDatabase
 
 
 class DeviceKeyManager(QMainWindow):
@@ -32,6 +35,15 @@ class DeviceKeyManager(QMainWindow):
         """保存数据到文件"""
         for device in self.devices:
             self.db.upsert_device(device)
+
+    def update_devices(self, devices):
+        """保存数据到文件"""
+        for device in devices:
+            self.db.upsert_device(device)
+
+    def insert_device(self, device):
+        """保存数据到文件"""
+        self.db.upsert_device(device)
 
     def init_ui(self):
         """初始化UI界面"""
@@ -102,6 +114,14 @@ class DeviceKeyManager(QMainWindow):
         name_layout.addWidget(name_label)
         name_layout.addWidget(name_input)
 
+        # 设备名称输入
+        device_layout = QHBoxLayout()
+        device_label = QLabel('设备代码:')
+        device_input = QLineEdit()
+        device_input.setPlaceholderText('请输入设备代码')
+        device_layout.addWidget(device_label)
+        device_layout.addWidget(device_input)
+
         # 有效期选择
         duration_layout = QHBoxLayout()
         duration_label = QLabel('有效期:')
@@ -119,6 +139,7 @@ class DeviceKeyManager(QMainWindow):
         btn_layout.addWidget(cancel_btn)
 
         layout.addLayout(name_layout)
+        layout.addLayout(device_layout)
         layout.addLayout(duration_layout)
         layout.addStretch()
         layout.addLayout(btn_layout)
@@ -130,26 +151,21 @@ class DeviceKeyManager(QMainWindow):
             if not name:
                 QMessageBox.warning(self, '警告', '请输入设备名称！')
                 return
-
-            # 生成唯一设备码和密钥
-            device_code = str(uuid.uuid4())
-            key = str(uuid.uuid4()).replace('-', '')[:16]
-
+            device_code = device_input.text().strip()
+            if not device_code:
+                QMessageBox.warning(self, '警告', '请输入设备代码！')
+                return
             # 设置有效期
             duration_text = duration_combo.currentText()
-            days = int(duration_text.replace('天', ''))
-            expire_date = datetime.now() + timedelta(days=days)
-
-            device = {
-                'name': name,
-                'device_code': device_code,
-                'key': key,
-                'issue_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'expire_time': expire_date.strftime('%Y-%m-%d %H:%M:%S')
-            }
+            valid_days = int(duration_text.replace('天', ''))
+            device = Device(device_name=name,
+                            device_code=device_code,
+                            secrete_key='xxx',
+                            created_at=datetime.now(),
+                            valid_days=valid_days)
 
             self.devices.append(device)
-            self.save_data()
+            self.insert_device(device)
             self.refresh_table()
             self.statusBar().showMessage(f'已添加设备: {name}')
             dialog.accept()
@@ -194,21 +210,16 @@ class DeviceKeyManager(QMainWindow):
         def on_ok():
             duration_text = duration_combo.currentText()
             days = int(duration_text.replace('天', ''))
-
+            devices = []
             for row in selected_rows:
                 index = row.row()
                 device = self.devices[index]
 
                 # 更新过期时间
-                old_expire = datetime.strptime(device['expire_time'], '%Y-%m-%d %H:%M:%S')
-                new_expire = old_expire + timedelta(days=days)
-                device['expire_time'] = new_expire.strftime('%Y-%m-%d %H:%M:%S')
+                device.valid_days = device.valid_days + days
+                devices.append(device)
 
-                # 生成新密钥
-                device['key'] = str(uuid.uuid4()).replace('-', '')[:16]
-                device['issue_time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-            self.save_data()
+            self.update_devices(devices)
             self.refresh_table()
             self.statusBar().showMessage(f'已续期 {len(selected_rows)} 台设备')
             dialog.accept()
@@ -256,13 +267,11 @@ class DeviceKeyManager(QMainWindow):
             key_item.setFlags(key_item.flags() & ~Qt.ItemIsEditable)
 
             # 签发时间
-            issue_item = QTableWidgetItem(device.created_at)
+            issue_item = QTableWidgetItem(str(device.created_at))
             issue_item.setFlags(issue_item.flags() & ~Qt.ItemIsEditable)
 
             # 计算剩余时间
-            expire_time = (datetime.strptime(device.created_at, '%Y-%m-%d %H:%M:%S')
-                           + timedelta(days=device.valid_days))
-            remaining = expire_time - datetime.now()
+            remaining = device.created_at - datetime.now() + timedelta(days=device.valid_days)
 
             if remaining.total_seconds() <= 0:
                 # 已过期
@@ -295,11 +304,9 @@ class DeviceKeyManager(QMainWindow):
 
     def update_timers(self):
         """更新倒计时显示"""
-        print(f'update_timers: {self.devices}')
         for i in range(self.table.rowCount()):
             device = self.devices[i]
-            expire_time = datetime.strptime(device.created_at, '%Y-%m-%d %H:%M:%S') + timedelta(days=device.valid_days)
-            remaining = expire_time - datetime.now()
+            remaining = device.created_at - datetime.now() + timedelta(days=device.valid_days)
 
             if remaining.total_seconds() <= 0:
                 remaining_text = "已过期"

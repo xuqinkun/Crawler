@@ -6,6 +6,7 @@ LOGIN_PAGE = 'user/userLoginNew2.json'
 PRODUCT_PAGE = 'api/smtProduct/pageList.json'
 PRODUCT_DETAIL_PAGE = 'https://www.amazon.com/gp/product/ajax/twisterDimensionSlotsDefault'
 
+DATETIME_PATTERN = '%Y-%m-%d %H:%M:%S'
 
 amazon_cookies = {
         'csm-hit': 'adb:adblk_yes&t:1763970326341&tb:s-HT7FZ8V6Z70MNFKWQ1BG|1763970324959',
