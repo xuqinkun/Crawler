@@ -98,15 +98,6 @@ def build_app(app_type):
     try:
         # 运行PyInstaller
         PyInstaller.__main__.run(args)
-
-        # 编译成功后打开输出文件夹
-        output_dir = f"./dist/{dist_dir_name}"
-        if os.path.exists(output_dir):
-            print(f"\n编译完成! 输出目录: {output_dir}")
-            open_folder(output_dir)
-        else:
-            print(f"\n警告: 输出目录不存在: {output_dir}")
-
         return True
     except Exception as e:
         print(f"编译失败: {e}")
@@ -147,5 +138,13 @@ def main():
         build_app(args.target)
 
 
+
 if __name__ == "__main__":
-    main()
+    # main()
+    # 编译成功后打开输出文件夹
+    output_dir = f"dist"
+    if os.path.exists(output_dir):
+        print(f"\n编译完成! 输出目录: {output_dir}")
+        open_folder(output_dir)
+    else:
+        print(f"\n警告: 输出目录不存在: {output_dir}")
