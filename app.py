@@ -596,8 +596,9 @@ args = parse_arguments()
 class MainWindow(QWidget):
     """重新设计的主窗口"""
 
-    def __init__(self):
+    def __init__(self, device):
         super().__init__()
+        self.device = device
         self.cache_dir = Path('.cache')
         self.cookie_dir = self.cache_dir / 'cookies'
         self.accounts = {}
@@ -1888,8 +1889,8 @@ def check_activation(activation_code, device_code, window):
         return
 
     try:
-        device = cert_util.decode_key(activation_code)
-        if device_code != device.device_code:
+        _device = cert_util.decode_key(activation_code)
+        if device_code != _device.device_code:
             QMessageBox.warning(window, '激活失败', '设备代码不匹配')
             return
 
@@ -1901,7 +1902,6 @@ def check_activation(activation_code, device_code, window):
 
         # 关闭激活窗口
         window.close()
-
     except Exception as e:
         QMessageBox.warning(window, '激活失败', f'激活码无效: {str(e)}')
 
@@ -1909,106 +1909,27 @@ def check_activation(activation_code, device_code, window):
 if __name__ == '__main__':
     # 设置全局异常处理
     sys.excepthook = excepthook
-
     app = QApplication(sys.argv)
-
     try:
-        # 检查激活码
-        device_code = cert_util.device_code_with_digest()
-        print(f"设备代码: {device_code}")
-
-        activation_code = util.load_active_code()
-        device = None
-
-        if activation_code:
+        while True:
+            # 激活码过期，显示过期提示
+            activation_code = util.load_active_code()
+            if not activation_code:
+                device_code = cert_util.device_code_with_digest()
+                activation_code = util.load_active_code()
             try:
                 device = cert_util.decode_key(activation_code)
-                if device_code != device.device_code:
-                    print(f"设备代码不匹配")
-                    activation_code = None
-                    device = None
             except Exception as e:
                 print(f"激活码无效: {e}")
-                activation_code = None
                 device = None
+            if not device:
+                activate_window(activation_code)
+                continue
 
-        # 如果激活码无效或不存在，显示激活窗口
-        if not activation_code or not device:
-            # 创建一个简单的激活窗口
-            activation_window = QWidget()
-            activation_window.setWindowTitle('激活程序')
-            activation_window.setFixedSize(400, 200)
+            remaining = device.created_at + timedelta(days=device.valid_days) - datetime.now()
+            if remaining.total_seconds() > 0:
+                break
 
-            layout = QVBoxLayout()
-
-            title_label = QLabel('请输入激活码')
-            title_label.setStyleSheet("font-size: 16px; font-weight: bold;")
-            title_label.setAlignment(Qt.AlignCenter)
-
-            code_input = QLineEdit()
-            code_input.setPlaceholderText('在此输入激活码')
-
-            device_label = QLabel(f'设备代码: {device_code}')
-            device_label.setWordWrap(True)
-            device_label.setCursor(Qt.PointingHandCursor)
-
-            # 直接重写mousePressEvent
-            def handle_click(event):
-                if event.button() == Qt.LeftButton:
-                    clipboard = QApplication.clipboard()
-                    clipboard.setText(device_code)
-
-                    # 显示成功消息
-                    QMessageBox.information(
-                        activation_window,
-                        '复制成功',
-                        '设备代码已复制到剪贴板',
-                        QMessageBox.Ok
-                    )
-
-                QLabel.mousePressEvent(device_label, event)
-
-            device_label.mousePressEvent = handle_click
-
-            activate_btn = QPushButton('激活')
-            activate_btn.clicked.connect(lambda: check_activation(
-                code_input.text().strip(),
-                device_code,
-                activation_window
-            ))
-
-            layout.addWidget(title_label)
-            layout.addWidget(QLabel(' '))
-            layout.addWidget(device_label)
-            layout.addWidget(QLabel(' '))
-            layout.addWidget(code_input)
-            layout.addWidget(activate_btn)
-
-            activation_window.setLayout(layout)
-            activation_window.show()
-
-            # 运行激活窗口
-            app.exec_()
-
-            # 重新检查激活状态
-            activation_code = util.load_active_code()
-            if activation_code:
-                try:
-                    device = cert_util.decode_key(activation_code)
-                except Exception as e:
-                    print(f"激活码无效: {e}")
-                    sys.exit(1)
-            else:
-                sys.exit(0)
-
-        # 检查激活码是否过期
-        if not device:
-            print(f"设备未激活")
-            sys.exit(1)
-
-        remaining = device.activated_at + timedelta(device.valid_days) - datetime.now()
-        if remaining.total_seconds() <= 0:
-            # 激活码过期，显示过期提示
             expired_window = QWidget()
             expired_window.setWindowTitle('激活码过期')
             expired_window.setFixedSize(300, 150)
@@ -2023,7 +1944,7 @@ if __name__ == '__main__':
             info_label.setAlignment(Qt.AlignCenter)
 
             ok_btn = QPushButton('确定')
-            ok_btn.clicked.connect(lambda: sys.exit(1))
+            ok_btn.clicked.connect(lambda: activate_window(activation_code))
 
             layout.addWidget(title_label)
             layout.addWidget(info_label)
@@ -2032,21 +1953,21 @@ if __name__ == '__main__':
             expired_window.setLayout(layout)
             expired_window.show()
             app.exec_()
-            sys.exit(1)
-        else:
-            # 计算剩余时间
-            hours = remaining.seconds // 3600
-            minutes = (remaining.seconds % 3600) // 60
-            remaining_text = f"{remaining.days}天{hours}小时{minutes}分"
 
-            print(f"设备已激活，剩余时间: {remaining_text}")
 
-            # 显示剩余时间提示（可选）
-            if remaining.days < 7:  # 剩余时间少于7天时显示提示
-                show_remaining_time_warning(remaining_text, app)
+        # 计算剩余时间
+        hours = remaining.seconds // 3600
+        minutes = (remaining.seconds % 3600) // 60
+        remaining_text = f"{remaining.days}天{hours}小时{minutes}分"
+
+        print(f"设备已激活，剩余时间: {remaining_text}")
+
+        # 显示剩余时间提示（可选）
+        if remaining.days < 7:  # 剩余时间少于7天时显示提示
+            show_remaining_time_warning(remaining_text, app)
 
         # 启动主窗口
-        window = MainWindow()
+        window = MainWindow(device)
         window.show()
 
         # 确保应用程序正确退出
