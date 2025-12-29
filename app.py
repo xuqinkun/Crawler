@@ -13,7 +13,7 @@ from PyQt5.QtCore import Qt, QByteArray, QTimer, QSize, QThread, QMutex
 from PyQt5.QtGui import QPixmap, QCursor, QIcon
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit, QToolTip,
                              QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox, QListWidget, QListWidgetItem,
-                             QFileDialog, QFrame, QProgressBar, QTextEdit)
+                             QFileDialog, QFrame, QProgressBar, QTextEdit, QDialog)
 
 import cert_util
 import util
@@ -684,6 +684,31 @@ class MainWindow(QWidget):
             margin: 0;
         """)
 
+        # 在标题右侧添加设备码按钮
+        header_buttons_layout = QHBoxLayout()
+
+        # 设备码按钮
+        device_code_btn = QPushButton('查看设备码')
+        device_code_btn.setStyleSheet("""
+                  QPushButton {
+                      background-color: #6c757d;
+                      color: white;
+                      padding: 6px 12px;
+                      border-radius: 4px;
+                      font-size: 12px;
+                  }
+                  QPushButton:hover {
+                      background-color: #5a6268;
+                  }
+              """)
+        device_code_btn.clicked.connect(self.show_device_code)
+        device_code_btn.setToolTip("查看当前设备的设备码")
+
+        header_buttons_layout.addWidget(device_code_btn)
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        header_layout.addLayout(header_buttons_layout)  # 添加设备码按钮
+
         # 全局导出目录设置
         export_section = QHBoxLayout()
         export_label = QLabel('导出目录:')
@@ -802,6 +827,106 @@ class MainWindow(QWidget):
         # 更新导出路径显示
         self.update_export_path_display()
 
+    def show_device_code(self):
+        """显示设备码对话框"""
+        device_code = cert_util.device_code_with_digest()
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle('设备信息')
+        dialog.setFixedSize(400, 200)
+
+        layout = QVBoxLayout()
+
+        title_label = QLabel('设备代码')
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold;")
+        title_label.setAlignment(Qt.AlignCenter)
+
+        # 设备码显示框
+        device_frame = QFrame()
+        device_frame.setFrameShape(QFrame.StyledPanel)
+        device_frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 4px;
+            }
+        """)
+
+        device_layout = QVBoxLayout(device_frame)
+
+        device_label = QLabel(device_code)
+        device_label.setWordWrap(True)
+        device_label.setStyleSheet("""
+            QLabel {
+                background-color: white;
+                border: 1px solid #ced4da;
+                border-radius: 3px;
+                padding: 10px;
+                font-family: 'Courier New', monospace;
+                font-size: 11px;
+                min-height: 40px;
+            }
+        """)
+        device_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        device_layout.addWidget(device_label)
+
+        # 按钮区域
+        button_layout = QHBoxLayout()
+
+        copy_btn = QPushButton('复制设备码')
+        copy_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #007bff;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
+            }
+        """)
+        copy_btn.clicked.connect(lambda: self.copy_device_code(device_code, dialog))
+
+        close_btn = QPushButton('关闭')
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #6c757d;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                background-color: #5a6268;
+            }
+        """)
+        close_btn.clicked.connect(dialog.close)
+
+        button_layout.addStretch()
+        button_layout.addWidget(copy_btn)
+        button_layout.addWidget(close_btn)
+
+        layout.addWidget(title_label)
+        layout.addWidget(device_frame)
+        layout.addLayout(button_layout)
+
+        dialog.setLayout(layout)
+        dialog.exec_()
+
+    def copy_device_code(self, device_code, parent_dialog):
+        """复制设备码到剪贴板"""
+        clipboard = QApplication.clipboard()
+        clipboard.setText(device_code)
+
+        # 显示成功消息
+        QMessageBox.information(
+            parent_dialog,
+            '复制成功',
+            '设备代码已复制到剪贴板',
+            QMessageBox.Ok
+        )
     def browse_export_path(self):
         """在文件管理器中打开导出目录"""
         try:
