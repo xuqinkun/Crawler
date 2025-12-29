@@ -1903,7 +1903,91 @@ def check_activation(activation_code, device_code, window):
         # 关闭激活窗口
         window.close()
     except Exception as e:
-        QMessageBox.warning(window, '激活失败', f'激活码无效: {str(e)}')
+        logger.error(f"激活码无效: {e}")
+        QMessageBox.warning(window, '激活失败', '激活码无效')
+
+def active(activation_code):
+    # 检查激活码
+    device_code = cert_util.device_code_with_digest()
+    print(f"设备代码: {device_code}")
+    device = None
+    if activation_code:
+        try:
+            device = cert_util.decode_key(activation_code)
+            if device_code != device.device_code:
+                print(f"设备代码不匹配")
+                device = None
+        except Exception as e:
+            print(f"激活码无效: {e}")
+            return None
+    if device:
+        return device
+    # 如果激活码无效或不存在，显示激活窗口
+    else:
+        # 创建一个简单的激活窗口
+        activate_window(device_code)
+
+        # 运行激活窗口
+        app.exec_()
+
+        # 重新检查激活状态
+        activation_code = util.load_active_code()
+        if activation_code:
+            try:
+                return cert_util.decode_key(activation_code)
+            except Exception as e:
+                print(f"激活码无效: {e}")
+                sys.exit(1)
+        else:
+            sys.exit(0)
+
+
+def activate_window(device_code):
+    activation_window = QWidget()
+    activation_window.setWindowTitle('激活程序')
+    activation_window.setFixedSize(400, 200)
+    layout = QVBoxLayout()
+    title_label = QLabel('请输入激活码')
+    title_label.setStyleSheet("font-size: 16px; font-weight: bold;")
+    title_label.setAlignment(Qt.AlignCenter)
+    code_input = QLineEdit()
+    code_input.setPlaceholderText('在此输入激活码')
+    device_label = QLabel(f'设备代码: {device_code}')
+    device_label.setWordWrap(True)
+    device_label.setCursor(Qt.PointingHandCursor)
+
+    # 直接重写mousePressEvent
+    def handle_click(event):
+        if event.button() == Qt.LeftButton:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(device_code)
+
+            # 显示成功消息
+            QMessageBox.information(
+                activation_window,
+                '复制成功',
+                '设备代码已复制到剪贴板',
+                QMessageBox.Ok
+            )
+
+        QLabel.mousePressEvent(device_label, event)
+
+    device_label.mousePressEvent = handle_click
+    activate_btn = QPushButton('激活')
+    activate_btn.clicked.connect(lambda: check_activation(
+        code_input.text().strip(),
+        device_code,
+        activation_window
+    ))
+    layout.addWidget(title_label)
+    layout.addWidget(QLabel(' '))
+    layout.addWidget(device_label)
+    layout.addWidget(QLabel(' '))
+    layout.addWidget(code_input)
+    layout.addWidget(activate_btn)
+    activation_window.setLayout(layout)
+    activation_window.show()
+
 
 # 修改最后的主程序部分
 if __name__ == '__main__':
