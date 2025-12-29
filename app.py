@@ -867,7 +867,7 @@ class MainWindow(QWidget):
         """更新激活倒计时"""
         now = datetime.now()
         remaining = self.activation_expiry_time - now
-        self.remaining_seconds = 0
+        self.remaining_seconds = remaining.total_seconds()
 
         # 更新显示
         self.update_activation_display()
@@ -2295,21 +2295,20 @@ if __name__ == '__main__':
         while True:
             # 激活码过期，显示过期提示
             activation_code = util.load_active_code()
+            device_code = cert_util.device_code_with_digest()
             if not activation_code:
-                device_code = cert_util.device_code_with_digest()
+                activate_window(device_code)
+                app.exec_()
                 activation_code = util.load_active_code()
             try:
                 device = cert_util.decode_key(activation_code)
             except Exception as e:
                 print(f"激活码无效: {e}")
                 device = None
-            if not device:
-                activate_window(activation_code)
-                continue
-
-            remaining = device.created_at + timedelta(days=device.valid_days) - datetime.now()
-            if remaining.total_seconds() > 0:
-                break
+            if device:
+                remaining = device.created_at + timedelta(days=device.valid_days) - datetime.now()
+                if remaining.total_seconds() > 0:
+                    break
 
             expired_window = QWidget()
             expired_window.setWindowTitle('激活码过期')
@@ -2325,7 +2324,7 @@ if __name__ == '__main__':
             info_label.setAlignment(Qt.AlignCenter)
 
             ok_btn = QPushButton('确定')
-            ok_btn.clicked.connect(lambda: activate_window(activation_code))
+            ok_btn.clicked.connect(lambda: activate_window(device_code))
 
             layout.addWidget(title_label)
             layout.addWidget(info_label)
