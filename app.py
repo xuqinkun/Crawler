@@ -1755,6 +1755,31 @@ def show_remaining_time_warning(remaining_time, app):
     # 短暂显示后自动关闭
     QTimer.singleShot(3000, warning_window.close)
 
+
+def check_activation(activation_code, device_code, window):
+    """检查激活码并激活"""
+    if not activation_code:
+        QMessageBox.warning(window, '输入错误', '请输入激活码')
+        return
+
+    try:
+        device = cert_util.decode_key(activation_code)
+        if device_code != device.device_code:
+            QMessageBox.warning(window, '激活失败', '设备代码不匹配')
+            return
+
+        # 保存激活码
+        util.save_active_code(activation_code)
+
+        # 显示激活成功消息
+        QMessageBox.information(window, '激活成功', '程序已成功激活！')
+
+        # 关闭激活窗口
+        window.close()
+
+    except Exception as e:
+        QMessageBox.warning(window, '激活失败', f'激活码无效: {str(e)}')
+
 # 修改最后的主程序部分
 if __name__ == '__main__':
     # 设置全局异常处理
@@ -1800,6 +1825,25 @@ if __name__ == '__main__':
 
             device_label = QLabel(f'设备代码: {device_code}')
             device_label.setWordWrap(True)
+            device_label.setCursor(Qt.PointingHandCursor)
+
+            # 直接重写mousePressEvent
+            def handle_click(event):
+                if event.button() == Qt.LeftButton:
+                    clipboard = QApplication.clipboard()
+                    clipboard.setText(device_code)
+
+                    # 显示成功消息
+                    QMessageBox.information(
+                        activation_window,
+                        '复制成功',
+                        '设备代码已复制到剪贴板',
+                        QMessageBox.Ok
+                    )
+
+                QLabel.mousePressEvent(device_label, event)
+
+            device_label.mousePressEvent = handle_click
 
             activate_btn = QPushButton('激活')
             activate_btn.clicked.connect(lambda: check_activation(
@@ -1890,27 +1934,3 @@ if __name__ == '__main__':
         logger.error(f"应用程序启动失败: {e}")
         sys.exit(1)
 
-
-def check_activation(activation_code, device_code, window):
-    """检查激活码并激活"""
-    if not activation_code:
-        QMessageBox.warning(window, '输入错误', '请输入激活码')
-        return
-
-    try:
-        device = cert_util.decode_key(activation_code)
-        if device_code != device.device_code:
-            QMessageBox.warning(window, '激活失败', '设备代码不匹配')
-            return
-
-        # 保存激活码
-        util.save_active_code(activation_code)
-
-        # 显示激活成功消息
-        QMessageBox.information(window, '激活成功', '程序已成功激活！')
-
-        # 关闭激活窗口
-        window.close()
-
-    except Exception as e:
-        QMessageBox.warning(window, '激活失败', f'激活码无效: {str(e)}')
