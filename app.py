@@ -10,7 +10,7 @@ from pathlib import Path
 
 import requests
 from PyQt5.QtCore import Qt, QByteArray, QTimer, QSize, QThread, QMutex
-from PyQt5.QtGui import QPixmap, QCursor, QIcon
+from PyQt5.QtGui import QPixmap, QCursor, QIcon, QPen, QColor, QPainter
 from PyQt5.QtWidgets import (QApplication, QWidget, QLabel, QLineEdit, QToolTip,
                              QPushButton, QVBoxLayout, QHBoxLayout, QMessageBox, QListWidget, QListWidgetItem,
                              QFileDialog, QFrame, QProgressBar, QTextEdit, QDialog)
@@ -599,6 +599,10 @@ class MainWindow(QWidget):
     def __init__(self, device):
         super().__init__()
         self.device = device
+        self.activation_expiry_time = device.activated_at + timedelta(device.valid_days)
+        self.activation_timer = QTimer()
+        self.activation_timer.timeout.connect(self.update_activation_timer)
+        self.remaining_seconds = None
         self.cache_dir = Path('.cache')
         self.cookie_dir = self.cache_dir / 'cookies'
         self.accounts = {}
@@ -625,6 +629,8 @@ class MainWindow(QWidget):
         self.load_accounts()
         # 加载保存的导出路径
         self.load_export_path()
+        # 启动激活倒计时
+        self.start_activation_timer()
 
     def init_ui(self):
         self.setWindowTitle('爬虫管理工具')
@@ -684,6 +690,26 @@ class MainWindow(QWidget):
             color: #2c3e50;
             margin: 0;
         """)
+        # 激活状态区域
+        activation_layout = QHBoxLayout()
+
+        # 激活状态图标
+        self.activation_status_icon = QLabel()
+        self.activation_status_icon.setFixedSize(16, 16)
+        self.update_activation_icon()
+
+        # 激活倒计时标签
+        self.activation_timer_label = QLabel()
+        self.activation_timer_label.setStyleSheet("""
+                    QLabel {
+                        font-size: 12px;
+                        font-weight: bold;
+                        padding: 4px 8px;
+                        border-radius: 4px;
+                        min-width: 100px;
+                        text-align: center;
+                    }
+                """)
 
         # 在标题右侧添加设备码按钮
         header_buttons_layout = QHBoxLayout()
@@ -705,10 +731,11 @@ class MainWindow(QWidget):
         device_code_btn.clicked.connect(self.show_device_code)
         device_code_btn.setToolTip("查看当前设备的设备码")
 
-        header_buttons_layout.addWidget(device_code_btn)
-        header_layout.addWidget(title_label)
-        header_layout.addStretch()
-        header_layout.addLayout(header_buttons_layout)  # 添加设备码按钮
+
+        activation_layout.addWidget(self.activation_status_icon)
+        activation_layout.addWidget(self.activation_timer_label)
+        activation_layout.addWidget(device_code_btn)
+        activation_layout.addSpacing(10)
 
         # 全局导出目录设置
         export_section = QHBoxLayout()
@@ -763,6 +790,7 @@ class MainWindow(QWidget):
 
         header_layout.addWidget(title_label)
         header_layout.addStretch()
+        header_layout.addLayout(activation_layout)
         header_layout.addLayout(export_section)
 
         # 账号列表区域
@@ -827,6 +855,275 @@ class MainWindow(QWidget):
 
         # 更新导出路径显示
         self.update_export_path_display()
+
+        # 初始更新激活倒计时
+        self.update_activation_display()
+
+    def start_activation_timer(self):
+        """启动激活倒计时定时器"""
+        self.activation_timer.start(1000)  # 每秒更新一次
+
+    def update_activation_timer(self):
+        """更新激活倒计时"""
+        now = datetime.now()
+        remaining = self.activation_expiry_time - now
+        self.remaining_seconds = 0
+
+        # 更新显示
+        self.update_activation_display()
+
+        # 检查是否过期
+        if self.remaining_seconds <= 0:
+            self.handle_activation_expired()
+
+    def update_activation_display(self):
+        """更新激活状态显示"""
+        if not self.device:
+            self.activation_timer_label.setText("未激活")
+            self.activation_timer_label.setStyleSheet("""
+                QLabel {
+                    background-color: #dc3545;
+                    color: white;
+                    font-size: 12px;
+                    font-weight: bold;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    min-width: 100px;
+                    text-align: center;
+                }
+            """)
+            return
+
+        if self.remaining_seconds is None:
+            now = datetime.now()
+            remaining = self.activation_expiry_time - now
+            self.remaining_seconds = remaining.total_seconds()
+
+        # 格式化显示时间
+        if self.remaining_seconds <= 0:
+            display_text = "已过期"
+            bg_color = "#dc3545"  # 红色
+            icon_color = "#dc3545"
+        elif self.remaining_seconds <= 3600:  # 小于1小时
+            minutes = int(self.remaining_seconds // 60)
+            display_text = f"{minutes}分钟"
+            bg_color = "#ffc107"  # 黄色警告
+            icon_color = "#ffc107"
+        elif self.remaining_seconds <= 86400:  # 小于1天
+            hours = int(self.remaining_seconds // 3600)
+            minutes = int((self.remaining_seconds % 3600) // 60)
+            display_text = f"{hours}小时{minutes}分"
+            bg_color = "#28a745" if self.remaining_seconds > 7200 else "#ffc107"  # 大于2小时绿色，否则黄色
+            icon_color = "#28a745" if self.remaining_seconds > 7200 else "#ffc107"
+        else:
+            days = int(self.remaining_seconds // 86400)
+            hours = int((self.remaining_seconds % 86400) // 3600)
+            display_text = f"{days}天{hours}时"
+            bg_color = "#28a745"  # 绿色
+            icon_color = "#28a745"
+
+        self.activation_timer_label.setText(display_text)
+        self.activation_timer_label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {bg_color};
+                color: white;
+                font-size: 12px;
+                font-weight: bold;
+                padding: 4px 8px;
+                border-radius: 4px;
+                min-width: 100px;
+                text-align: center;
+            }}
+        """)
+
+        # 更新窗口标题
+        title_text = f'爬虫管理工具 - 剩余: {display_text}'
+        if self.remaining_seconds <= 3600:  # 小于1小时时添加警告标识
+            title_text = f'⚠ 爬虫管理工具 - 剩余: {display_text}'
+        self.setWindowTitle(title_text)
+
+        # 更新图标颜色
+        self.update_activation_icon(icon_color)
+
+    def update_activation_icon(self, color=None):
+        """更新激活状态图标"""
+        if not color:
+            if not self.device:
+                color = "#dc3545"  # 红色
+            elif self.remaining_seconds and self.remaining_seconds <= 3600:
+                color = "#ffc107"  # 黄色
+            else:
+                color = "#28a745"  # 绿色
+
+        # 创建一个简单的圆形图标
+        pixmap = QPixmap(16, 16)
+        pixmap.fill(Qt.transparent)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # 根据状态绘制不同的图标
+        if color == "#dc3545":  # 过期/未激活
+            painter.setBrush(QColor(color))
+            painter.setPen(QColor(color))
+            painter.drawEllipse(2, 2, 12, 12)
+            # 添加X标记
+            painter.setPen(QPen(Qt.white, 2))
+            painter.drawLine(5, 5, 11, 11)
+            painter.drawLine(11, 5, 5, 11)
+        elif color == "#ffc107":  # 即将过期
+            painter.setBrush(QColor(color))
+            painter.setPen(QColor(color))
+            painter.drawEllipse(2, 2, 12, 12)
+            # 添加感叹号
+            painter.setPen(QPen(Qt.white, 2))
+            painter.drawLine(8, 4, 8, 10)
+            painter.drawEllipse(7, 11, 2, 2)
+        else:  # 正常
+            painter.setBrush(QColor(color))
+            painter.setPen(QColor(color))
+            painter.drawEllipse(2, 2, 12, 12)
+            # 添加勾号
+            painter.setPen(QPen(Qt.white, 2))
+            painter.drawLine(4, 8, 7, 11)
+            painter.drawLine(7, 11, 12, 4)
+
+        painter.end()
+        self.activation_status_icon.setPixmap(pixmap)
+
+    def handle_activation_expired(self):
+        """处理激活过期"""
+        # 停止倒计时定时器
+        self.activation_timer.stop()
+
+        # 停止所有正在进行的任务
+        self.stop_all_tasks()
+
+        # 显示过期提示对话框
+        self.show_activation_expired_dialog()
+
+    def stop_all_tasks(self):
+        """停止所有任务"""
+        print("激活过期，正在停止所有任务...")
+
+        # 停止所有爬取工作线程
+        for username in list(self.crawl_workers.keys()):
+            self.stop_worker(username)
+
+        # 停止所有Agent
+        self.stop_all_agents()
+
+        # 禁用所有开始按钮
+        for username, btn in self.start_buttons.items():
+            btn.setEnabled(False)
+            btn.set_running(False)
+
+        # 禁用添加账号按钮
+        self.add_btn.setEnabled(False)
+
+        # 更新状态
+        self.is_running = False
+        self.status_label.setText("激活过期，所有任务已停止")
+
+    def show_activation_expired_dialog(self):
+        """显示激活过期对话框"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle('激活过期')
+        dialog.setFixedSize(350, 200)
+        dialog.setWindowModality(Qt.ApplicationModal)
+
+        layout = QVBoxLayout()
+
+        # 图标
+        icon_label = QLabel()
+        icon_label.setFixedSize(64, 64)
+        icon_pixmap = QPixmap(64, 64)
+        icon_pixmap.fill(Qt.transparent)
+
+        painter = QPainter(icon_pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setBrush(QColor("#dc3545"))
+        painter.setPen(QColor("#dc3545"))
+        painter.drawEllipse(12, 12, 40, 40)
+
+        painter.setPen(QPen(Qt.white, 3))
+        painter.drawLine(20, 20, 44, 44)
+        painter.drawLine(44, 20, 20, 44)
+        painter.end()
+
+        icon_label.setPixmap(icon_pixmap)
+        icon_label.setAlignment(Qt.AlignCenter)
+
+        # 标题
+        title_label = QLabel('激活码已过期')
+        title_label.setStyleSheet("""
+            font-size: 18px;
+            font-weight: bold;
+            color: #dc3545;
+        """)
+        title_label.setAlignment(Qt.AlignCenter)
+
+        # 消息
+        message_label = QLabel('程序激活码已过期，所有任务已停止。\n请联系管理员获取新的激活码。')
+        message_label.setAlignment(Qt.AlignCenter)
+        message_label.setWordWrap(True)
+
+        # 设备码信息
+        device_code = cert_util.device_code_with_digest()
+        device_info_label = QLabel(f'设备码: {device_code[:20]}...')
+        device_info_label.setAlignment(Qt.AlignCenter)
+        device_info_label.setToolTip(device_code)
+
+        # 按钮
+        button_layout = QHBoxLayout()
+
+        copy_btn = QPushButton('复制设备码')
+        copy_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #17a2b8;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #138496;
+            }
+        """)
+        copy_btn.clicked.connect(lambda: self.copy_device_code(device_code, dialog))
+
+        close_btn = QPushButton('退出程序')
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+        """)
+        close_btn.clicked.connect(self.close_application)
+
+        button_layout.addWidget(copy_btn)
+        button_layout.addStretch()
+        button_layout.addWidget(close_btn)
+
+        # 添加到布局
+        layout.addWidget(icon_label)
+        layout.addWidget(title_label)
+        layout.addWidget(message_label)
+        layout.addWidget(device_info_label)
+        layout.addLayout(button_layout)
+
+        dialog.setLayout(layout)
+        dialog.exec_()
+
+    def close_application(self):
+        """关闭应用程序"""
+        self.is_closing = True
+        self.close()
 
     def show_device_code(self):
         """显示设备码对话框"""
