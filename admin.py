@@ -499,6 +499,7 @@ class DeviceKeyManager(QMainWindow):
         """点击密钥列时自动复制到剪贴板"""
         if column == HEADER_TO_INDEX['密钥']:  # 密钥列在表格中的索引为 2
             item = self.table.item(row, column)
+            device_name_item = self.table.item(row, HEADER_TO_INDEX['设备名称'])
             if item:
                 key_text = item.text()
                 # 获取系统剪贴板并设置文本内容
@@ -506,7 +507,7 @@ class DeviceKeyManager(QMainWindow):
                 clipboard.setText(key_text)
 
                 # 在状态栏给予提示，增强用户体验
-                self.statusBar().showMessage(f'密钥已复制到剪贴板: {key_text}', 3000)
+                self.statusBar().showMessage(f'[{device_name_item.text()}]的密钥已复制到剪贴板', 3000)
 
     def update_timers(self):
         """更新倒计时显示"""
