@@ -2198,7 +2198,8 @@ def check_activation(activation_code, device_code, expired_window, window):
         QMessageBox.information(window, '激活成功', '程序已成功激活！')
 
         # 关闭激活窗口
-        expired_window.close()
+        if expired_window:
+            expired_window.close()
         window.close()
     except Exception as e:
         logger.error(f"激活码无效: {e}")
@@ -2299,7 +2300,7 @@ if __name__ == '__main__':
             activation_code = util.load_active_code()
             device_code = cert_util.device_code_with_digest()
             if not activation_code:
-                activate_window(device_code)
+                activate_window(None, device_code)
                 app.exec_()
                 activation_code = util.load_active_code()
             try:

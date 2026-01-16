@@ -1,6 +1,7 @@
 import json
 import time
 from pathlib import Path
+from time import sleep
 from typing import Set
 from urllib.parse import quote
 
@@ -198,6 +199,9 @@ class Agent(QObject):
                 page_payload['pageNo'] = page_no
                 response = self.post(page_url, page_payload)
                 pages_data = json.loads(response)
+                if pages_data['code'] != 0:
+                    print(f'爬取第{page_no}页数据时出错: {pages_data["msg"]}')
+                    return
                 page_data = pages_data['data']['page']
                 return page_no, page_data['list']
             except Exception as e:
@@ -208,7 +212,7 @@ class Agent(QObject):
         products_in_web = []
 
         # 设置合适的线程数，可根据实际情况调整
-        max_workers = min(10, total_pages)  # 最多10个线程
+        max_workers = min(1, total_pages)  # 最多10个线程
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             # 提交所有页面获取任务
             future_to_page = {
