@@ -2306,7 +2306,7 @@ if __name__ == '__main__':
                 print(f"激活码无效: {e}")
                 device = None
             if device:
-                remaining = device.created_at + timedelta(days=device.valid_days) - datetime.now()
+                remaining = device.activated_at + timedelta(days=device.valid_days) - datetime.now()
                 if remaining.total_seconds() > 0:
                     break
 

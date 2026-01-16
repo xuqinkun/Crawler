@@ -141,13 +141,14 @@ class AmazonDatabase:
             INSERT INTO device 
             (device_name, device_code, secrete_key, activated, expired, 
              valid_days, created_at, activated_at)
-            VALUES (?, ?, ?, ?, ?, ?, datetime('now', 'localtime'), ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(device_code) DO UPDATE SET
                 device_name = COALESCE(excluded.device_name, device_name),
                 secrete_key = COALESCE(excluded.secrete_key, secrete_key),
                 activated = COALESCE(excluded.activated, activated),
                 expired = COALESCE(excluded.expired, expired),
                 valid_days = COALESCE(excluded.valid_days, valid_days),
+                created_at = COALESCE(excluded.created_at, created_at),
                 activated_at = COALESCE(excluded.activated_at, activated_at)
                 ''', (
                 device.device_name,
@@ -156,6 +157,7 @@ class AmazonDatabase:
                 device.activated,
                 device.expired,
                 device.valid_days,
+                device.created_at,
                 device.activated_at
             ))
             self.conn.commit()

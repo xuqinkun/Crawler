@@ -358,7 +358,12 @@ class DeviceKeyManager(QMainWindow):
         if ok:
             if self.db.extend_device_life(device.device_code, days):
                 # 同步更新本地内存数据，避免重新加载全量数据闪烁
+                now = datetime.now()
+                device.activated_at = now
                 device.valid_days += days
+                sk = cert_util.generate_key_from_device(device.device_name, device.device_code, now, device.valid_days)
+                device.secrete_key = sk
+                self.db.upsert_device(device)
                 QMessageBox.information(self, "成功", f"设备已成功续期 {days} 天")
                 self.perform_search()  # 使用perform_search刷新
 
