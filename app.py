@@ -2179,7 +2179,7 @@ def show_remaining_time_warning(remaining_time, app):
     QTimer.singleShot(3000, warning_window.close)
 
 
-def check_activation(activation_code, device_code, window):
+def check_activation(activation_code, device_code, expired_window, window):
     """检查激活码并激活"""
     if not activation_code:
         QMessageBox.warning(window, '输入错误', '请输入激活码')
@@ -2198,6 +2198,7 @@ def check_activation(activation_code, device_code, window):
         QMessageBox.information(window, '激活成功', '程序已成功激活！')
 
         # 关闭激活窗口
+        expired_window.close()
         window.close()
     except Exception as e:
         logger.error(f"激活码无效: {e}")
@@ -2239,7 +2240,7 @@ def active(activation_code):
             sys.exit(0)
 
 
-def activate_window(device_code):
+def activate_window(expired_window, device_code):
     activation_window = QWidget()
     activation_window.setWindowTitle('激活程序')
     activation_window.setFixedSize(400, 200)
@@ -2274,6 +2275,7 @@ def activate_window(device_code):
     activate_btn.clicked.connect(lambda: check_activation(
         code_input.text().strip(),
         device_code,
+        expired_window,
         activation_window
     ))
     layout.addWidget(title_label)
@@ -2324,7 +2326,7 @@ if __name__ == '__main__':
             info_label.setAlignment(Qt.AlignCenter)
 
             ok_btn = QPushButton('确定')
-            ok_btn.clicked.connect(lambda: activate_window(device_code))
+            ok_btn.clicked.connect(lambda: activate_window(expired_window, device_code))
 
             layout.addWidget(title_label)
             layout.addWidget(info_label)
