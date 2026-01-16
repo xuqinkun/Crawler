@@ -140,7 +140,7 @@ def main():
 
 
 if __name__ == "__main__":
-    # main()
+    main()
     # 编译成功后打开输出文件夹
     output_dir = f"dist"
     if os.path.exists(output_dir):
