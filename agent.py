@@ -399,8 +399,11 @@ class AmazonAgent(QObject):
                 availability = 'in stock' in availability_span.text.lower()
                 availability = availability or 'available to ship' in availability_span.text.lower()
                 if availability:
-                    price_span = buy_box_div.select_one(
-                        '#corePrice_feature_div > div > div > span.a-price.aok-align-center > span.a-offscreen')
+                    core_price_feature_div = buy_box_div.select_one('#corePrice_feature_div')
+                    if core_price_feature_div:
+                        price_span = core_price_feature_div.select_one('span.a-offscreen')
+                    else:
+                        price_span = None
                     if price_span:
                         product.price = self.extract_price(price_span)
                     delivery_tag = buy_box_div.select_one(
@@ -531,6 +534,10 @@ if __name__ == '__main__':
     # ids = get_all_browser_ids()
     driver = get_chrome_driver()
     agent = AmazonAgent(driver=driver)
-    p = Product(url='https://www.amazon.com/Feonase-Dining-Kitchen-Ergonomic-Backrest/dp/B0DS2PZ55L/ref=sr_1_125?crid=3RUGY4AP1UPF5&dib=eyJ2IjoiMSJ9.yGZU4eEuRvzzSp6oQHgSTv1rQO4pK9VF3592Qz6PvLUxA8dTblKuUzBipjE_bvpK3xjg5H97QYMm0Vc-m_0M-hayQ3sOhpzkHxNcMm0PYAIrne5UfP_Q6I7rCgRM8v-r-ZfV31y0yuwRpsmJZfwis1JE9xM-UEIAY4UtJX8pR-uBZAnBFUHtsEwW4VzcS-tLRiNcMv7oDeGNsCrlncPnV5xSSWiu65ky-n7WfQSQ7NXnqqRq-J4X2sAcs89dIi-4wLFg8Zf5Qb9g0YsMvvJiDq_T7gb8yfsaRSgjYh2V0s4.-56QMqTw8UCWlJ5AyIbOs4fulCmBfd1YVVt_zfKPazM&dib_tag=se&keywords=chair&qid=1767281189&refinements=p_36%3A8000-25000&rnid=386465011&sprefix=chai%27r%2Caps%2C472&sr=8-125&xpid=qoqh-yV2spAYG')
-    agent.start_craw(p)
-    print(p)
+    with open('urls.text', 'r') as f:
+        urls = f.readlines()
+    for url in urls:
+        p = Product(url=url.strip())
+        p = agent.start_craw(p)
+        if p.availability:
+            print(p.url, ' ', p.price)
