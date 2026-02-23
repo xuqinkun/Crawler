@@ -2288,6 +2288,13 @@ def activate_window(expired_window, device_code):
     activation_window.setLayout(layout)
     activation_window.show()
 
+    def close_event_handler(event):
+        # 点击关闭按钮时，直接退出整个程序
+        sys.exit(0)
+
+    # 将自定义的关闭事件处理函数绑定到窗口实例
+    activation_window.closeEvent = close_event_handler
+
 
 # 修改最后的主程序部分
 if __name__ == '__main__':
