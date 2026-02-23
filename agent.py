@@ -1,4 +1,5 @@
 import json
+import re
 import time
 from pathlib import Path
 from time import sleep
@@ -395,86 +396,89 @@ class AmazonAgent(QObject):
             if availability_span is None:
                 product.availability = False
                 product.completed = True
+                # 有价格显示考虑是有货的
+                core_price_feature_div = buy_box_div.select_one('#corePrice_feature_div')
+                if core_price_feature_div:
+                    availability = True
             else:
-                availability = 'in stock' in availability_span.text.lower()
-                availability = availability or 'available to ship' in availability_span.text.lower()
-                if availability:
-                    core_price_feature_div = buy_box_div.select_one('#corePrice_feature_div')
-                    if core_price_feature_div:
-                        price_span = core_price_feature_div.select_one('span.a-offscreen')
-                    else:
-                        price_span = None
-                    if price_span:
-                        product.price = self.extract_price(price_span)
+                availability_text = availability_span.text.lower()
+                availability = 'in stock' in availability_text or 'available to ship' in availability_text
+            if availability:
+                core_price_feature_div = buy_box_div.select_one('#corePrice_feature_div')
+                if core_price_feature_div:
+                    price_span = core_price_feature_div.select_one('span.a-offscreen')
+                else:
+                    price_span = None
+                if price_span:
+                    product.price = self.extract_price(price_span.text)
+                delivery_tag = buy_box_div.select_one(
+                    '#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE > span')
+                if delivery_tag is None:
                     delivery_tag = buy_box_div.select_one(
-                        '#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE > span')
-                    if delivery_tag is None:
-                        delivery_tag = buy_box_div.select_one(
-                            '#mir-layout-DELIVERY_BLOCK-slot-NO_PROMISE_UPSELL_MESSAGE > a')
+                        '#mir-layout-DELIVERY_BLOCK-slot-NO_PROMISE_UPSELL_MESSAGE > a')
+                if delivery_tag:
+                    product.shipping_cost = delivery_tag.text.strip().split(' ')[0]
+                else:
+                    delivery_tag = buy_box_div.select_one(
+                        '#mir-layout-DELIVERY_BLOCK-slot-NO_PROMISE_UPSELL_MESSAGE')
                     if delivery_tag:
                         product.shipping_cost = delivery_tag.text.strip().split(' ')[0]
                     else:
-                        delivery_tag = buy_box_div.select_one(
-                            '#mir-layout-DELIVERY_BLOCK-slot-NO_PROMISE_UPSELL_MESSAGE')
-                        if delivery_tag:
-                            product.shipping_cost = delivery_tag.text.strip().split(' ')[0]
-                        else:
-                            print(f'{url} 无法获取运费信息')
-                    ships_from_span = buy_box_div.select_one(
-                        '#fulfillerInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
-                    if ships_from_span:
-                        shipping_from = ships_from_span.text.strip()
+                        print(f'{url} 无法获取运费信息')
+                ships_from_span = buy_box_div.select_one(
+                    '#fulfillerInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
+                if ships_from_span:
+                    shipping_from = ships_from_span.text.strip()
+                else:
+                    ships_from_new_span = main_soup.select_one('#sellerProfileTriggerId')
+                    if ships_from_new_span:
+                        shipping_from = ships_from_new_span.text.strip()
                     else:
-                        ships_from_new_span = main_soup.select_one('#sellerProfileTriggerId')
-                        if ships_from_new_span:
-                            shipping_from = ships_from_new_span.text.strip()
+                        ships_from_span = main_soup.select_one(
+                            '#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
+                        if ships_from_span:
+                            shipping_from = ships_from_span.text.strip()
                         else:
-                            ships_from_span = main_soup.select_one(
-                                '#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
-                            if ships_from_span:
-                                shipping_from = ships_from_span.text.strip()
-                            else:
-                                shipping_from = ''
-                                print(f'{url} 获取货源地信息失败')
+                            shipping_from = ''
+                            print(f'{url} 获取货源地信息失败')
+                sold_by_span = buy_box_div.select_one(
+                    '#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover.aok-inline-block')
+                if sold_by_span:
+                    sold_by = sold_by_span.text.strip()
+                else:
                     sold_by_span = buy_box_div.select_one(
-                        '#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover.aok-inline-block')
+                        '#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
                     if sold_by_span:
                         sold_by = sold_by_span.text.strip()
                     else:
-                        sold_by_span = buy_box_div.select_one(
-                            '#merchantInfoFeature_feature_div > div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
-                        if sold_by_span:
-                            sold_by = sold_by_span.text.strip()
-                        else:
-                            sold_by = ''
-                            print(f'{url} 无法获取卖方信息')
+                        sold_by = ''
+                        print(f'{url} 无法获取卖方信息')
+                product.shipping_from_amazon = shipping_from_amazon(shipping_from, sold_by)
+            else:
+                price_feature_div = main_soup.select_one('#corePrice_feature_div')
+                if price_feature_div:
+                    availability = True
+                    price_span = price_feature_div.select_one('span.a-offscreen')
+                    if price_span:
+                        product.price = self.extract_price(price_span.text)
+                    delivery_tag = main_soup.select_one(
+                        '#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE > span')
+                    if delivery_tag:
+                        product.shipping_cost = delivery_tag.text.strip().split(' ')[0]
+                    shipping_from_span = main_soup.select_one('#fulfillerInfoFeature_feature_div > '
+                                                              'div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
+                    if shipping_from_span:
+                        shipping_from = shipping_from_span.text.strip()
+                    else:
+                        shipping_from = ''
+                    sold_by_span = main_soup.select_one('#sellerProfileTriggerId')
+                    if sold_by_span:
+                        sold_by = sold_by_span.text.strip()
+                    else:
+                        sold_by = ''
                     product.shipping_from_amazon = shipping_from_amazon(shipping_from, sold_by)
-                else:
-                    price_feature_div = main_soup.select_one('#corePrice_feature_div')
-                    if price_feature_div:
-                        availability = True
-                        price_span = price_feature_div.select_one('#corePrice_feature_div > div > div > '
-                                                                  'span.a-price.aok-align-center > span.a-offscreen')
-                        if price_span:
-                            product.price = self.extract_price(price_span)
-                        delivery_tag = main_soup.select_one(
-                            '#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE > span')
-                        if delivery_tag:
-                            product.shipping_cost = delivery_tag.text.strip().split(' ')[0]
-                        shipping_from_span = main_soup.select_one('#fulfillerInfoFeature_feature_div > '
-                                                                  'div.offer-display-feature-text.a-size-small > div.offer-display-feature-text.a-spacing-none.odf-truncation-popover > span')
-                        if shipping_from_span:
-                            shipping_from = shipping_from_span.text.strip()
-                        else:
-                            shipping_from = ''
-                        sold_by_span = main_soup.select_one('#sellerProfileTriggerId')
-                        if sold_by_span:
-                            sold_by = sold_by_span.text.strip()
-                        else:
-                            sold_by = ''
-                        product.shipping_from_amazon = shipping_from_amazon(shipping_from, sold_by)
-                    availability = availability
-                    product.completed = True
+                availability = availability
+                product.completed = True
         else:
             availability_span = new_product_div.select_one('#availability > span')
             if availability_span is None:
@@ -489,7 +493,7 @@ class AmazonAgent(QObject):
                 product.invalid = True
                 product.completed = True
                 return product
-            product.price = self.extract_price(price_span)
+            product.price = self.extract_price(price_span.text)
             shipping_info = new_product_div.select_one(
                 '#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_MEDIUM')
             if shipping_info is None:
@@ -518,9 +522,14 @@ class AmazonAgent(QObject):
         return product
 
     @staticmethod
-    def extract_price(price_span):
-        logger.debug(f"price_span 类型: {type(price_span)}, 值: {price_span}")
-        return float(price_span.text[1:].replace(',', ''))
+    def extract_price(price_text):
+        logger.debug(f"price_span 类型: {type(price_text)}, 值: {price_text}")
+        match = re.search(r'\d{1,3}(?:,\d{3})*(?:\.\d+)?', price_text)
+        if match:
+            price = match.group()
+            return float(price.replace(',', ''))
+        else:
+            return 0
 
     def stop(self):
         try:
