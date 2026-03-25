@@ -87,6 +87,7 @@ def build_app(app_type):
         '--hidden-import=http',
         '--hidden-import=html',
         '--hidden-import=selenium',
+        '--hidden-import=webdriver_manager',
 
         # 添加证书文件
         '--add-data', f'{certifi_dir}{os.pathsep}certifi',
