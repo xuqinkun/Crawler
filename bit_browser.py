@@ -135,13 +135,25 @@ def get_all_browser_ids():
 # --- 使用示例 ---
 if __name__ == "__main__":
 
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            executable_path=r"C:\Program Files\Google\Chrome\Application\chrome.exe",  # Windows 示例
+            # executable_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", # Mac 示例
+            headless=False
+        )
 
-    driver = get_chrome_driver()
+        # 在新页面时指定下载接受策略和路径
+        page = browser.new_page(
+            accept_downloads=True,
+            viewport={"width": 1920, "height": 1080}
+        )
 
-    if driver:
-        print("Selenium 连接成功！")
-        driver.get("https://www.amazon.com/dp/B0DY64FB25")
-        print(driver.title)
+        # 设置下载保存路径
+        download_path = r"D:\downloads"
+        page.on("download", lambda download: download.save_as(os.path.join(download_path, download.suggested_filename)))
+
+        page.goto("https://www.amazon.com/dp/B0DY64FB25")
+        browser.close()
 
         # 注意：使用接管模式时，不要使用 driver.quit()，否则会关闭整个浏览器窗口
         # 如果只想断开连接但保留窗口，可以直接结束脚本或不做任何操作
