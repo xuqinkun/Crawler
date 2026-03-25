@@ -49,7 +49,7 @@ def build_app(app_type):
         entry_file,
         f'--name={app_name}',
         '--onefile',
-        '--windowed',
+        # '--windowed',
 
         # 指定输出目录
         '--distpath', f'./dist/{dist_dir_name}',

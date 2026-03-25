@@ -352,9 +352,6 @@ class LoginWindow(QWidget):
         password_layout.setContentsMargins(0,5,0,5)
         password_layout.addWidget(self.password_input)
 
-        # 验证码区域
-        captcha_layout = QVBoxLayout()
-
         # 验证码输入行
         captcha_input_layout = QHBoxLayout()
         self.captcha_input = QLineEdit()
@@ -376,8 +373,6 @@ class LoginWindow(QWidget):
         captcha_input_layout.addWidget(self.captcha_label)
         captcha_input_layout.addStretch()
 
-        captcha_layout.addLayout(captcha_input_layout)
-
         # 登录按钮
         self.login_btn = QPushButton('登录')
         self.login_btn.clicked.connect(self.login)
@@ -386,7 +381,7 @@ class LoginWindow(QWidget):
         main_layout.addWidget(title_label)
         main_layout.addLayout(username_layout)
         main_layout.addLayout(password_layout)
-        main_layout.addLayout(captcha_layout)
+        main_layout.addLayout(captcha_input_layout)
         main_layout.addWidget(self.login_btn)
 
         self.setLayout(main_layout)

@@ -1,16 +1,20 @@
 import json
 import time
-
+import os
 import requests
+from webdriver_manager.chrome import ChromeDriverManager
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 
 # 配置区域
+
+os.environ['WDM_LOCAL'] = '1' # 优先使用本地缓存
+os.environ['WDM_SSL_VERIFY'] = '0' # 如果证书有问题可尝试关闭验证
+
 BITBROWSER_API_URL = "http://127.0.0.1:54345"  # 比特浏览器默认 API 地址
 CHROMEDRIVER_PATH = r"chromedriver.exe"  # 你的对应版本的驱动路径
 headers = {'Content-Type': 'application/json'}
-
 
 def get_chrome_driver():
     """
@@ -22,9 +26,9 @@ def get_chrome_driver():
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--disable-gpu')
     chrome_options.add_argument('--log-level=3')
-    service = Service(executable_path=CHROMEDRIVER_PATH)
-
-    return webdriver.Chrome(service=service,options=chrome_options)
+    service = Service(ChromeDriverManager(url="https://npmmirror.com/mirrors/chromedriver/").install())
+    driver = webdriver.Chrome(service=service)
+    return driver
 
 def get_bitbrowser_driver(browser_id):
     """
@@ -123,12 +127,9 @@ def get_all_browser_ids():
 
 # --- 使用示例 ---
 if __name__ == "__main__":
-    # 替换为你比特浏览器里的 窗口ID
-    ids = get_all_browser_ids()
 
-    target_browser_id = ids[0]
 
-    driver = get_bitbrowser_driver(target_browser_id)
+    driver = get_chrome_driver()
 
     if driver:
         print("Selenium 连接成功！")

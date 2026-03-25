@@ -33,9 +33,7 @@ DRIVER_EXE = r'C:\Users\xqk\AppData\Local\Programs\bitbrowser\比特浏览器.ex
 # 使用示例
 extractor = AmazonASINExtractor()
 logger = setup_concurrent_logging()
-chrome_options = Options()
-chrome_options.binary_location = DRIVER_EXE
-service = Service(executable_path=DRIVER_EXE)
+
 
 def shipping_from_amazon(ships_from, sold_by):
     return 'amazon' in ships_from.lower() or 'amazon' in sold_by.lower()
