@@ -74,8 +74,7 @@ class CrawlWorker(QObject):
         self.status_updated.emit(self.username, "初始化浏览器池...")
         agent_pool = []
         if not self.use_bit:
-            driver = get_chrome_driver()
-            agent_pool.append(AmazonAgent(driver=driver))
+            agent_pool.append(AmazonAgent())
             return agent_pool
 
         # 1. 获取所有可用的 BitBrowser ID
@@ -233,45 +232,48 @@ class CrawlWorker(QObject):
             self.progress_updated.emit(self.username, '爬取中', self.get_progress())
 
         # 1. 初始化 Agent Pool
-        agent_pool = self._initialize_agent_pool()
-        if not agent_pool and not self.is_stopped:
-            self.status_updated.emit(self.username, "并发爬取失败，浏览器初始化错误。")
-            return
-        # 2. 准备任务和 Agent 循环器
+        # agent_pool = self._initialize_agent_pool()
+        # if not agent_pool and not self.is_stopped:
+        #     self.status_updated.emit(self.username, "并发爬取失败，浏览器初始化错误。")
+        #     return
+        # # 2. 准备任务和 Agent 循环器
         tasks = list(product_uncompleted)
-        agent_cycle = cycle(agent_pool)  # 循环使用 Agent 实例
+        # agent_cycle = cycle(agent_pool)  # 循环使用 Agent 实例
         completed_products = []
         # 3. 使用线程池进行并发爬取
         self.status_updated.emit(self.username, "开始爬取商品")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(agent_pool)) as executor:
-            # 提交任务
-            future_to_product = {}
-            for product in tasks:
-                self.wait_if_paused()
-                if self.is_stopped:
-                    break
-
-                # 分配一个 Agent
-                agent = next(agent_cycle)
-                future = executor.submit(self._crawl_task, product, agent, db)
-                future_to_product[future] = product
-
-            # 处理结果
-            for future in concurrent.futures.as_completed(future_to_product):
-                if self.is_stopped:
-                    break
-
-                product, success = future.result()
-
-                if success:
-                    completed_products.append(product)
-                    # 批量保存已完成的商品
-                    if len(completed_products) >= self.batch_size:
-                        db.batch_upsert_products_chunked(completed_products)
-                        completed_products.clear()
-                        time.sleep(0.1)
-                # 失败的商品会自动保留在数据库中，等待下次重试
-
+        # with concurrent.futures.ThreadPoolExecutor(max_workers=len(agent_pool)) as executor:
+        #     # 提交任务
+        #     future_to_product = {}
+        #     for product in tasks:
+        #         self.wait_if_paused()
+        #         if self.is_stopped:
+        #             break
+        #
+        #         # 分配一个 Agent
+        #         agent = next(agent_cycle)
+        #         future = executor.submit(self._crawl_task, product, agent, db)
+        #         future_to_product[future] = product
+        #
+        #     # 处理结果
+        #     for future in concurrent.futures.as_completed(future_to_product):
+        #         if self.is_stopped:
+        #             break
+        #
+        #         product, success = future.result()
+        #
+        #
+        #         # 失败的商品会自动保留在数据库中，等待下次重试
+        agent = AmazonAgent()
+        for product in tasks:
+            product, success = self._crawl_task(product, agent, db)
+            if success:
+                completed_products.append(product)
+                # 批量保存已完成的商品
+                if len(completed_products) >= self.batch_size:
+                    db.batch_upsert_products_chunked(completed_products)
+                    completed_products.clear()
+                    time.sleep(0.1)
         # 4. 处理剩余的成功商品
         if completed_products:
             db.batch_upsert_products_chunked(completed_products)

@@ -19,13 +19,7 @@ from logger import setup_concurrent_logging
 from bean import Product
 import concurrent.futures
 from util import curr_milliseconds, ensure_dir_exists
-from selenium import webdriver
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.remote.webdriver import WebDriver
+from playwright.sync_api import sync_playwright, Page, TimeoutError as PlaywrightTimeout
 
 ZIP_CODE = '61110'
 
@@ -38,25 +32,11 @@ logger = setup_concurrent_logging()
 def shipping_from_amazon(ships_from, sold_by):
     return 'amazon' in ships_from.lower() or 'amazon' in sold_by.lower()
 
-class any_of_elements_located:
-    def __init__(self, locators):
-        self.locators = locators
-    def __call__(self, driver: WebDriver):
-        for locator in self.locators:
-            try:
-                element = driver.find_element(*locator)
-                if element.is_displayed():
-                    return element
-            except:
-                continue
-        return False
-
-
 # 关键元素定位器列表，用于判断页面是否成功加载
-KEY_SUCCESS_SELECTORS_LIST = [
-    (By.CSS_SELECTOR, "span.a-price > span.a-offscreen"), # 价格
-    (By.ID, "productTitle"), # 标题
-    (By.ID, "dp"), # 主体容器
+KEY_SUCCESS_SELECTORS = [
+    "span.a-price > span.a-offscreen", # 价格
+    "productTitle", # 标题
+    "dp", # 主体容器
 ]
 
 class Agent(QObject):
@@ -242,33 +222,97 @@ class Agent(QObject):
 
 
 class AmazonAgent(QObject):
-    def __init__(self, driver: WebDriver):
+    def __init__(self):
         super().__init__()
         # driver 对象启动 Chrome 浏览器
         self.amazon_session = requests.Session()
-        self.amazon_driver = driver
+        self.playwright = sync_playwright().start()
         time.sleep(1.5)
-        self.amazon_driver.maximize_window()
-        self.wait = WebDriverWait(self.amazon_driver, 10)  # 最大等待 15 秒
+        # 启动浏览器 (这里使用 chromium，如果需要连接比特浏览器，需用 connect_over_cdp)
+        # 如果必须用比特浏览器，请告诉我，我需要修改这部分代码
+        self.browser = self.playwright.chromium.launch(
+            headless=True,
+            args=[
+                '--disable-blink-features=AutomationControlled',
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process'
+            ]
+        )
+
+        # 创建上下文，设置 UA 和 视口
+        self.context = self.browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+            locale="en-US",
+            timezone_id="America/New_York"
+        )
+
+        self.page = self.context.new_page()
+
+        # 注入脚本隐藏自动化特征 (解决 "检测到插件注入" 问题)
+        self.page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined
+                    });
+                    window.navigator.chrome = { runtime: {}, loadTimes: function() {}, csi: function() {} };
+                """)
+
+        # 设置默认超时时间 (替代 implicitly_wait)
+        self.page.set_default_timeout(30000)
+
         self.shopping_sys_session = requests.Session()
-        self.amazon_driver.get("https://www.amazon.com/dp/B0F2DTDDFV?language=en_US")
+        self._init_amazon_session()
 
+    def _init_amazon_session(self):
+        """初始化亚马逊会话，设置邮编等"""
         try:
-            time.sleep(1)
-            self.amazon_driver.find_element(By.CSS_SELECTOR, 'body > div > div.a-row.a-spacing-double-large > div.a-section > div > div > form > div > div > span > span > button').click()
-            print(f'Click continue')
-        except Exception:
-            pass
+            self.page.goto("https://www.amazon.com/dp/B0F2DTDDFV?language=en_US", wait_until="domcontentloaded")
+            time.sleep(1.5)  # 稍微等待以防页面未完全渲染
 
-        address_span = self.wait.until(EC.presence_of_element_located((By.ID, "glow-ingress-line2")))
-        if ZIP_CODE not in address_span.text.strip():
-            address_span.click()
-            address_input = self.wait.until(EC.presence_of_element_located((By.ID, "GLUXZipUpdateInput")))
-            address_input.send_keys(ZIP_CODE)
-            self.amazon_driver.find_element(By.CSS_SELECTOR, '#GLUXZipUpdate > span > input').click()
+            # 尝试点击 "Continue" (如果有)
+            try:
+                # Playwright 的 locator 会自动等待元素可见
+                continue_btn = self.page.locator('button:has-text("Continue"), button:has-text("继续")')
+                if continue_btn.count() > 0:
+                    continue_btn.first.click(timeout=5000)
+                    print('Click continue')
+            except Exception:
+                pass  # 没找到按钮也没关系
 
-        for cookie in self.amazon_driver.get_cookies():
-            self.amazon_session.cookies.update(cookie)
+            # 处理邮编
+            try:
+                address_locator = self.page.locator("#glow-ingress-line2")
+                # 等待地址元素出现
+                address_locator.wait_for(state="visible", timeout=10000)
+
+                current_address = address_locator.inner_text().strip()
+                if ZIP_CODE not in current_address:
+                    address_locator.click()
+
+                    # 等待输入框出现
+                    zip_input = self.page.locator("#GLUXZipUpdateInput")
+                    zip_input.wait_for(state="visible", timeout=10000)
+                    zip_input.fill(ZIP_CODE)
+
+                    # 点击提交
+                    submit_btn = self.page.locator('#GLUXZipUpdate input[type="submit"], #GLUXZipUpdate button')
+                    if submit_btn.count() > 0:
+                        submit_btn.first.click()
+                        time.sleep(1)  # 等待弹窗关闭
+            except Exception as e:
+                print(f"设置邮编时出错或不需要设置：{e}")
+
+            # 同步 Cookies 到 requests session
+            cookies = self.context.cookies()
+            for cookie in cookies:
+                self.amazon_session.cookies.set(cookie['name'], cookie['value'], domain=cookie['domain'],
+                                                path=cookie['path'])
+
+        except Exception as e:
+            print(f"初始化亚马逊会话失败：{e}")
+            logger.error(f"初始化亚马逊会话失败：{e}")
 
     def start_craw(self, product: Product) -> Product:
         """
@@ -286,64 +330,74 @@ class AmazonAgent(QObject):
             product.completed = True
             print(f'产品{product.product_id} 没有找到链接')
             return product
-        try:
-            self.amazon_driver.get(url)  # 假设 self.amazon_driver 已初始化
-        except Exception as e:
-            # 如果导航本身失败（例如，网络中断）
-            print(f'{url} 导航失败: {e}')
-            logger.error(f'{url} 导航失败: {e}')
-            product.completed = False
-            return product
 
         # 2. 显式等待关键元素出现，判断页面是否加载成功
         # 替代了 if status_code != 200: 的检查
 
         main_page_source = None
         try:
-            # 等待任何一个关键元素出现 (使用自定义的 OR 条件)
-            self.wait.until(
-                any_of_elements_located(KEY_SUCCESS_SELECTORS_LIST),
-                message=f"等待页面关键元素超时 ({url})。"
-            )
-            # 如果成功找到元素，说明页面加载成功
-            main_page_source = self.amazon_driver.page_source
+            # 1. 导航到 URL
+            # Playwright 的 goto 默认会等待 networkidle 或 load，比 Selenium 更智能
+            response = self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
-        except TimeoutException:
-            # 3. 超时或加载失败，检查是否为 404/反爬页面
-            main_page_source = self.amazon_driver.page_source
+            # 2. 等待关键元素出现 (替代 WebDriverWait + any_of_elements_located)
+            # 策略：遍历选择器，只要有一个出现即可
+            found = False
+            for selector in KEY_SUCCESS_SELECTORS:
+                locator = self.page.locator(selector)
+                if locator.count() > 0:
+                    try:
+                        locator.first.wait_for(state="visible", timeout=5000)
+                        found = True
+                        break
+                    except PlaywrightTimeout:
+                        continue
 
-            # 检查是否为 Amazon 的 404/商品不存在页面
+            if found:
+                main_page_source = self.page.content()
+            else:
+                # 如果没有找到关键元素，抛出异常进入 except 块处理
+                raise PlaywrightTimeout("关键元素未加载")
+
+        except Exception as e:
+            # 3. 异常处理 (404, 验证码，网络错误)
+            print(f'{url} 导航或等待元素失败：{e}')
+
+            # 获取当前页面源码进行判断
+            main_page_source = self.page.content()
+
+            # 检查 404
             if "Sorry! We couldn't find that page" in main_page_source or "The requested URL was not found" in main_page_source:
-                # 替代了 if status_code == 404: 的检查
-                print(f'{url} 链接失效, 疑似404页面。')
-                logger.warning(f'{url} 链接失效, 疑似404页面。')
+                print(f'{url} 链接失效，疑似 404 页面。')
+                logger.warning(f'{url} 链接失效，疑似 404 页面。')
                 product.completed = True
                 product.invalid = True
                 return product
 
-            elif "Type the characters" in main_page_source or "Sorry, we just need to make sure you're not a robot" in main_page_source:
-                # 遇到验证码/反爬，标记为未完成，下次重试
-                print(f'{url} 遇到亚马逊验证码/机器人检查页面，爬取失败。')
+            # 检查验证码
+            if "Type the characters" in main_page_source or "Sorry, we just need to make sure you're not a robot" in main_page_source:
+                print(f'{url} 遇到亚马逊验证码/机器人检查页面。')
                 logger.warning(f'{url} 遇到亚马逊验证码/机器人检查页面。')
-                product.completed = False
+                product.completed = False  # 标记为未完成，以便重试
                 return product
 
-            else:
-                # 可能是页面加载慢，但不是明确的404或验证码，继续尝试用 BS 解析已有的源码
-                resp = self.amazon_session.get(url)
-                code = resp.status_code
-                if code == 404:
-                    print(f'{url} 链接失效, 404页面。')
+            # 如果既不是 404 也不是验证码，可能是网络慢，尝试用 requests 兜底
+            try:
+                resp = self.amazon_session.get(url, timeout=10)
+                if resp.status_code == 404:
                     product.completed = True
                     product.invalid = True
                     return product
-                elif code != 200:
-                    print(f'{url} 链接失效, 状态码: {code}')
-                    logger.warning(f'{url} 链接失效, 状态码: {code}')
+                elif resp.status_code != 200:
+                    print(f'{url} 链接失效，状态码：{resp.status_code}')
                     product.completed = True
                     product.invalid = True
                     return product
                 main_page_source = resp.text
+            except Exception as req_err:
+                print(f'{url} Requests 兜底也失败：{req_err}')
+                product.completed = False
+                return product
 
                 # 4. 使用 BeautifulSoup 解析页面的最终 HTML 源代码
         # 替代了 main_soup = BeautifulSoup(main_page.text, 'html.parser')
