@@ -231,6 +231,7 @@ class AmazonAgent(QObject):
         # 启动浏览器 (这里使用 chromium，如果需要连接比特浏览器，需用 connect_over_cdp)
         # 如果必须用比特浏览器，请告诉我，我需要修改这部分代码
         self.browser = self.playwright.chromium.launch(
+            executable_path=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
             headless=True,
             args=[
                 '--disable-blink-features=AutomationControlled',
@@ -277,7 +278,7 @@ class AmazonAgent(QObject):
                 continue_btn = self.page.locator('button:has-text("Continue"), button:has-text("继续")')
                 if continue_btn.count() > 0:
                     continue_btn.first.click(timeout=5000)
-                    print('Click continue')
+                    print('Clicked continue')
             except Exception:
                 pass  # 没找到按钮也没关系
 
@@ -347,7 +348,7 @@ class AmazonAgent(QObject):
                 locator = self.page.locator(selector)
                 if locator.count() > 0:
                     try:
-                        locator.first.wait_for(state="visible", timeout=5000)
+                        locator.first.wait_for(state="visible", timeout=10000)
                         found = True
                         break
                     except PlaywrightTimeout:
@@ -593,8 +594,7 @@ class AmazonAgent(QObject):
 if __name__ == '__main__':
     from bit_browser import *
     # ids = get_all_browser_ids()
-    driver = get_chrome_driver()
-    agent = AmazonAgent(driver=driver)
+    agent = AmazonAgent()
     with open('urls.text', 'r') as f:
         urls = f.readlines()
     for url in urls:
