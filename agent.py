@@ -232,7 +232,7 @@ class AmazonAgent(QObject):
         # 如果必须用比特浏览器，请告诉我，我需要修改这部分代码
         self.browser = self.playwright.chromium.launch(
             executable_path=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-            headless=True,
+            headless=False,
             args=[
                 '--disable-blink-features=AutomationControlled',
                 '--no-sandbox',
@@ -326,12 +326,13 @@ class AmazonAgent(QObject):
         """
         # 1. 导航到目标 URL
         url = product.url
-        if url is None:
+        if url is None or url.strip() == '':
             product.invalid = True
             product.completed = True
             print(f'产品{product.product_id} 没有找到链接')
             return product
-
+        if not url.startswith("https://"):
+            url = "https://" + url
         # 2. 显式等待关键元素出现，判断页面是否加载成功
         # 替代了 if status_code != 200: 的检查
 
