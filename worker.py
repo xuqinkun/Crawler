@@ -231,39 +231,11 @@ class CrawlWorker(QObject):
         if self.get_progress() > 0 and self.is_running:
             self.progress_updated.emit(self.username, '爬取中', self.get_progress())
 
-        # 1. 初始化 Agent Pool
-        # agent_pool = self._initialize_agent_pool()
-        # if not agent_pool and not self.is_stopped:
-        #     self.status_updated.emit(self.username, "并发爬取失败，浏览器初始化错误。")
-        #     return
-        # # 2. 准备任务和 Agent 循环器
         tasks = list(product_uncompleted)
-        # agent_cycle = cycle(agent_pool)  # 循环使用 Agent 实例
         completed_products = []
         # 3. 使用线程池进行并发爬取
         self.status_updated.emit(self.username, "开始爬取商品")
-        # with concurrent.futures.ThreadPoolExecutor(max_workers=len(agent_pool)) as executor:
-        #     # 提交任务
-        #     future_to_product = {}
-        #     for product in tasks:
-        #         self.wait_if_paused()
-        #         if self.is_stopped:
-        #             break
-        #
-        #         # 分配一个 Agent
-        #         agent = next(agent_cycle)
-        #         future = executor.submit(self._crawl_task, product, agent, db)
-        #         future_to_product[future] = product
-        #
-        #     # 处理结果
-        #     for future in concurrent.futures.as_completed(future_to_product):
-        #         if self.is_stopped:
-        #             break
-        #
-        #         product, success = future.result()
-        #
-        #
-        #         # 失败的商品会自动保留在数据库中，等待下次重试
+
         agent = AmazonAgent()
         for product in tasks:
             product, success = self._crawl_task(product, agent, db)
